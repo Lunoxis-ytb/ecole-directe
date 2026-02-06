@@ -2,6 +2,8 @@
 const Grades = {
   rawData: null,
   chart: null,
+  currentSemester: null,
+  currentNotes: null,
 
   async load() {
     const container = document.getElementById("grades-container");
@@ -14,11 +16,18 @@ const Grades = {
     }
 
     this.rawData = result.data;
-    this.render();
-    this.updateStats();
+
+    // Detecter le semestre en cours automatiquement
+    const now = new Date();
+    const month = now.getMonth(); // 0=jan
+    const defaultSemester = month >= 0 && month <= 5 ? "A002" : "A001";
+    document.getElementById("trimester-select").value = defaultSemester;
+
+    this.render(defaultSemester);
+    this.initChartSubjectSelect();
   },
 
-  render(trimesterFilter) {
+  render(semesterFilter) {
     const container = document.getElementById("grades-container");
     const data = this.rawData;
 
@@ -27,12 +36,18 @@ const Grades = {
       return;
     }
 
-    let notes = data.notes;
-    if (trimesterFilter) {
-      notes = notes.filter((n) => n.codePeriode === trimesterFilter);
-    }
+    this.currentSemester = semesterFilter;
 
-    // Grouper par matière
+    let notes = data.notes;
+    if (semesterFilter) {
+      notes = notes.filter((n) => n.codePeriode === semesterFilter);
+    }
+    this.currentNotes = notes;
+
+    // Mettre a jour les stats
+    this.updateStats(semesterFilter);
+
+    // Grouper par matiere
     const subjects = {};
     for (const note of notes) {
       const key = note.codeMatiere || note.libelleMatiere;
@@ -45,7 +60,7 @@ const Grades = {
       subjects[key].notes.push(note);
     }
 
-    // Calculer les moyennes par matière
+    // Calculer les moyennes par matiere
     const subjectList = Object.values(subjects).map((s) => {
       const validNotes = s.notes.filter(
         (n) => !isNaN(parseFloat(n.valeur)) && !isNaN(parseFloat(n.noteSur))
@@ -58,7 +73,6 @@ const Grades = {
       return s;
     });
 
-    // Trier par nom de matière
     subjectList.sort((a, b) => a.name.localeCompare(b.name));
 
     let html = `<table class="grades-table">
@@ -93,7 +107,6 @@ const Grades = {
         <td>${max}</td>
       </tr>`;
 
-      // Détails des notes (cachés par défaut)
       for (const n of s.notes) {
         const dateStr = n.date ? new Date(n.date).toLocaleDateString("fr-FR") : "";
         html += `<tr class="grade-detail" data-subject="${s.name}" style="display:none">
@@ -108,7 +121,7 @@ const Grades = {
     html += "</tbody></table>";
     container.innerHTML = html;
 
-    // Toggle des détails au clic
+    // Toggle details au clic
     container.querySelectorAll(".subject-row").forEach((row) => {
       row.addEventListener("click", () => {
         const subject = row.dataset.subject;
@@ -121,11 +134,37 @@ const Grades = {
       });
     });
 
-    // Graphique
-    this.renderChart(subjectList);
+    // Graphique ligne
+    this.renderLineChart();
   },
 
-  renderChart(subjectList) {
+  // Remplir le selecteur de matieres pour le graphique
+  initChartSubjectSelect() {
+    const select = document.getElementById("chart-subject-select");
+    if (!select || !this.rawData || !this.rawData.notes) return;
+
+    const subjects = new Map();
+    for (const n of this.rawData.notes) {
+      const key = n.codeMatiere || n.libelleMatiere;
+      if (!subjects.has(key)) {
+        subjects.set(key, n.libelleMatiere);
+      }
+    }
+
+    // Garder "Moyenne generale" comme premier choix
+    select.innerHTML = '<option value="">Moyenne generale</option>';
+    const sorted = [...subjects.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+    for (const [code, name] of sorted) {
+      select.innerHTML += `<option value="${code}">${name}</option>`;
+    }
+
+    select.addEventListener("change", () => {
+      this.renderLineChart(select.value || null);
+    });
+  },
+
+  // Graphique en ligne style trading
+  renderLineChart(subjectFilter) {
     const canvas = document.getElementById("grades-chart");
     if (!canvas) return;
 
@@ -133,33 +172,125 @@ const Grades = {
       this.chart.destroy();
     }
 
-    const filtered = subjectList.filter((s) => s.avg !== "--");
+    const notes = this.currentNotes || [];
+
+    // Filtrer par matiere si besoin
+    let filtered = notes;
+    if (subjectFilter) {
+      filtered = notes.filter(
+        (n) => (n.codeMatiere || n.libelleMatiere) === subjectFilter
+      );
+    }
+
+    // Ne garder que les notes valides avec une date
+    const validNotes = filtered
+      .filter(
+        (n) =>
+          n.date &&
+          !isNaN(parseFloat(n.valeur)) &&
+          !isNaN(parseFloat(n.noteSur))
+      )
+      .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+    if (validNotes.length === 0) {
+      this.chart = null;
+      return;
+    }
+
+    // Calculer la moyenne cumulee (ligne eleve)
+    const labels = [];
+    const avgData = [];
+    let runningSum = 0;
+
+    for (let i = 0; i < validNotes.length; i++) {
+      const n = validNotes[i];
+      const val = (parseFloat(n.valeur) / parseFloat(n.noteSur)) * 20;
+      runningSum += val;
+      const runningAvg = runningSum / (i + 1);
+
+      labels.push(new Date(n.date).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" }));
+      avgData.push(parseFloat(runningAvg.toFixed(2)));
+    }
+
+    // Ligne moyenne de classe (horizontale si on a la donnee)
+    const classAvgData = [];
+    let classAvg = null;
+
+    if (this.rawData.periodes && this.currentSemester) {
+      const periode = this.rawData.periodes.find(
+        (p) => p.codePeriode === this.currentSemester
+      );
+      if (periode) {
+        if (subjectFilter && periode.ensembleMatieres && periode.ensembleMatieres.disciplines) {
+          // Chercher la moyenne de classe pour cette matiere
+          const disc = periode.ensembleMatieres.disciplines.find(
+            (d) => d.codeMatiere === subjectFilter
+          );
+          if (disc && disc.moyenneClasse) {
+            classAvg = parseFloat(disc.moyenneClasse.replace(",", "."));
+          }
+        }
+        if (!classAvg && periode.moyenneClasse) {
+          classAvg = parseFloat(periode.moyenneClasse.replace(",", "."));
+        }
+      }
+    }
+
+    if (classAvg) {
+      for (let i = 0; i < labels.length; i++) {
+        classAvgData.push(classAvg);
+      }
+    }
+
+    const datasets = [
+      {
+        label: "Ma moyenne",
+        data: avgData,
+        borderColor: "#4f8cff",
+        backgroundColor: "rgba(79, 140, 255, 0.1)",
+        borderWidth: 2.5,
+        pointRadius: 4,
+        pointBackgroundColor: "#4f8cff",
+        tension: 0.3,
+        fill: true,
+      },
+    ];
+
+    if (classAvgData.length > 0) {
+      datasets.push({
+        label: "Moyenne classe",
+        data: classAvgData,
+        borderColor: "#f87171",
+        borderWidth: 2,
+        borderDash: [6, 4],
+        pointRadius: 0,
+        tension: 0,
+        fill: false,
+      });
+    }
 
     this.chart = new Chart(canvas, {
-      type: "bar",
-      data: {
-        labels: filtered.map((s) => s.name),
-        datasets: [
-          {
-            label: "Moyenne",
-            data: filtered.map((s) => parseFloat(s.avg)),
-            backgroundColor: filtered.map((s) => {
-              const v = parseFloat(s.avg);
-              return v >= 14
-                ? "rgba(52, 211, 153, 0.7)"
-                : v >= 10
-                ? "rgba(251, 191, 36, 0.7)"
-                : "rgba(248, 113, 113, 0.7)";
-            }),
-            borderRadius: 6,
-          },
-        ],
-      },
+      type: "line",
+      data: { labels, datasets },
       options: {
         responsive: true,
         maintainAspectRatio: false,
+        interaction: {
+          intersect: false,
+          mode: "index",
+        },
         plugins: {
-          legend: { display: false },
+          legend: {
+            display: true,
+            labels: { color: "#9aa0b0", usePointStyle: true },
+          },
+          tooltip: {
+            backgroundColor: "rgba(26, 29, 39, 0.95)",
+            titleColor: "#e8eaed",
+            bodyColor: "#e8eaed",
+            borderColor: "#333750",
+            borderWidth: 1,
+          },
         },
         scales: {
           y: {
@@ -177,12 +308,16 @@ const Grades = {
     });
   },
 
-  updateStats() {
+  updateStats(semesterFilter) {
     const data = this.rawData;
     if (!data || !data.notes) return;
 
-    // Moyenne générale
-    const validNotes = data.notes.filter(
+    let notes = data.notes;
+    if (semesterFilter) {
+      notes = notes.filter((n) => n.codePeriode === semesterFilter);
+    }
+
+    const validNotes = notes.filter(
       (n) => !isNaN(parseFloat(n.valeur)) && !isNaN(parseFloat(n.noteSur))
     );
     if (validNotes.length > 0) {
@@ -200,16 +335,24 @@ const Grades = {
         (avgNum >= 14 ? "avg-good" : avgNum >= 10 ? "avg-mid" : "avg-bad");
     }
 
-    // Moyenne de classe (si disponible dans les périodes)
     if (data.periodes && data.periodes.length > 0) {
-      const lastPeriode = data.periodes[data.periodes.length - 1];
-      if (lastPeriode.moyenneClasse) {
-        document.getElementById("stat-class-avg").textContent =
-          lastPeriode.moyenneClasse;
+      let periode;
+      if (semesterFilter) {
+        periode = data.periodes.find((p) => p.codePeriode === semesterFilter);
       }
-      if (lastPeriode.moyenneGenerale) {
-        document.getElementById("stat-avg").textContent =
-          lastPeriode.moyenneGenerale;
+      if (!periode) {
+        periode = data.periodes[data.periodes.length - 1];
+      }
+
+      if (periode) {
+        if (periode.moyenneClasse) {
+          document.getElementById("stat-class-avg").textContent =
+            periode.moyenneClasse;
+        }
+        if (periode.moyenneGenerale) {
+          document.getElementById("stat-avg").textContent =
+            periode.moyenneGenerale;
+        }
       }
     }
   },

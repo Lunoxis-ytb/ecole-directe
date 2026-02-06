@@ -11,11 +11,20 @@
   // Double auth elements
   const daForm = document.getElementById("doubleauth-form");
   const daQuestion = document.getElementById("da-question");
-  const daLabel = document.getElementById("da-label");
-  const daAnswer = document.getElementById("da-answer");
+  const daPropositions = document.getElementById("da-propositions");
+  const daChoixInput = document.getElementById("da-choix");
   const daBtn = document.getElementById("da-btn");
   const daError = document.getElementById("da-error");
   let pendingDAToken = null;
+
+  // ── Utilitaire Base64 ──
+  function decodeB64(str) {
+    try {
+      return atob(str);
+    } catch {
+      return str;
+    }
+  }
 
   // ── Session (sessionStorage) ──
   function saveSession(token, userId, prenom, nom) {
@@ -58,19 +67,50 @@
   function showDoubleAuth(doubleAuthData) {
     hideAllPages();
     doubleAuthPage.classList.add("active");
-    daAnswer.value = "";
     daError.textContent = "";
+    daChoixInput.value = "";
+    daBtn.disabled = true;
 
-    // Afficher la question selon le type de double auth
-    if (doubleAuthData && doubleAuthData.question) {
-      daQuestion.textContent = doubleAuthData.question;
-    } else if (doubleAuthData && doubleAuthData.typeDA) {
-      daQuestion.textContent = "Verification requise (" + doubleAuthData.typeDA + ")";
-    } else {
-      daQuestion.textContent = "Entrez votre date de naissance (JJ/MM/AAAA)";
-    }
     console.log("[DA] Donnees double auth:", JSON.stringify(doubleAuthData));
-    daAnswer.focus();
+
+    // Decoder et afficher la question (Base64)
+    if (doubleAuthData && doubleAuthData.question) {
+      daQuestion.textContent = decodeB64(doubleAuthData.question);
+    } else {
+      daQuestion.textContent = "Verification de securite";
+    }
+
+    // Afficher les propositions comme boutons cliquables
+    daPropositions.innerHTML = "";
+
+    if (doubleAuthData && doubleAuthData.propositions && doubleAuthData.propositions.length > 0) {
+      for (const prop of doubleAuthData.propositions) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "da-option";
+        btn.textContent = decodeB64(prop);
+        btn.dataset.value = prop; // Garder la valeur Base64 originale
+
+        btn.addEventListener("click", () => {
+          // Deselectionner tous les autres
+          daPropositions.querySelectorAll(".da-option").forEach((b) => b.classList.remove("selected"));
+          btn.classList.add("selected");
+          daChoixInput.value = prop;
+          daBtn.disabled = false;
+        });
+
+        daPropositions.appendChild(btn);
+      }
+    } else {
+      // Pas de propositions — afficher un champ texte en fallback
+      daPropositions.innerHTML = '<input type="text" id="da-fallback-input" class="da-fallback" placeholder="Votre reponse..." style="width:100%;padding:12px 14px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-size:15px;">';
+      const fallbackInput = document.getElementById("da-fallback-input");
+      fallbackInput.addEventListener("input", () => {
+        daChoixInput.value = fallbackInput.value;
+        daBtn.disabled = !fallbackInput.value.trim();
+      });
+      fallbackInput.focus();
+    }
   }
 
   function showDashboard(prenom, nom) {
@@ -95,7 +135,6 @@
         tab.classList.add("active");
         document.getElementById(`tab-${target}`).classList.add("active");
 
-        // Charger les données si pas encore fait
         if (target === "homework" && !Homework.rawData) {
           Homework.load();
         }
@@ -117,10 +156,7 @@
 
   // ── Charger le dashboard ──
   async function loadDashboard() {
-    // Charger notes en premier (onglet par défaut)
     await Grades.load();
-
-    // Initialiser le module emploi du temps
     Schedule.init();
   }
 
@@ -148,7 +184,6 @@
     const motdepasse = document.getElementById("password").value;
 
     try {
-      console.log("[LOGIN] Tentative de connexion...");
       const result = await API.login(identifiant, motdepasse);
       console.log("[LOGIN] Resultat:", result);
 
@@ -171,7 +206,7 @@
     loginBtn.textContent = "Se connecter";
   });
 
-  // ── Double Auth ──
+  // ── Double Auth (QCM) ──
   daForm.addEventListener("submit", async (e) => {
     e.preventDefault();
     daError.textContent = "";
@@ -179,8 +214,15 @@
     daBtn.textContent = "Verification...";
 
     try {
-      const answer = daAnswer.value.trim();
-      const result = await API.submitDoubleAuth(pendingDAToken, { question: answer });
+      const choix = daChoixInput.value;
+      if (!choix) {
+        daError.textContent = "Selectionnez une reponse";
+        daBtn.disabled = false;
+        daBtn.textContent = "Valider";
+        return;
+      }
+
+      const result = await API.submitDoubleAuth(pendingDAToken, choix);
       console.log("[DA] Resultat:", result);
 
       if (result.success) {
@@ -217,7 +259,6 @@
   initTabs();
   initTrimesterSelect();
 
-  // Vérifier session existante
   const session = loadSession();
   if (session) {
     API.token = session.token;

@@ -15,9 +15,17 @@ const UA =
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Log toutes les requetes API
+app.use("/api", (req, res, next) => {
+  console.log(`[REQ] ${req.method} ${req.url}`);
+  next();
+});
+
 app.use(express.static(path.join(__dirname, "public")));
 
 // Stockage temporaire des sessions en attente de double auth
+// Cle = token, Valeur = { cookies, identifiant, motdepasse }
 const pendingAuth = new Map();
 
 // ── Utilitaire : extraire les cookies d'une reponse fetch ──
@@ -26,36 +34,40 @@ function extractCookies(fetchResponse) {
   const raw = fetchResponse.headers.raw()["set-cookie"];
   if (raw) {
     for (const c of raw) {
-      // Extraire seulement "NOM=VALEUR" (avant le premier ";")
       const nameValue = c.split(";")[0].trim();
       cookies.push(nameValue);
     }
   }
-  return cookies; // ["GTK=abc123", "autre=xyz"]
+  return cookies;
+}
+
+// ── Etape 1 commune : obtenir GTK cookies ──
+async function getGtkCookies() {
+  const gtkRes = await fetch(
+    `${API_BASE}/login.awp?gtk=1&v=${API_VERSION}`,
+    {
+      method: "GET",
+      headers: { "User-Agent": UA },
+      agent,
+    }
+  );
+  const cookies = extractCookies(gtkRes);
+  const gtkCookie = cookies.find((c) => c.startsWith("GTK="));
+  const gtkValue = gtkCookie ? gtkCookie.split("=").slice(1).join("=") : "";
+  console.log("[GTK] Cookies recus:", cookies.length, "GTK:", gtkCookie ? "oui" : "non");
+  return { cookies, gtkValue };
 }
 
 // ── POST /api/login — authentification ──
 app.post("/api/login", async (req, res) => {
   try {
-    const { identifiant, motdepasse } = req.body;
+    const { identifiant, motdepasse, fa } = req.body;
 
-    // Etape 1 : GET pour obtenir le GTK via Set-Cookie
-    const gtkRes = await fetch(
-      `${API_BASE}/login.awp?gtk=1&v=${API_VERSION}`,
-      {
-        method: "GET",
-        headers: { "User-Agent": UA },
-        agent,
-      }
-    );
-    const cookies = extractCookies(gtkRes);
-    const gtkCookie = cookies.find((c) => c.startsWith("GTK="));
-    const gtkValue = gtkCookie ? gtkCookie.split("=").slice(1).join("=") : "";
-    console.log("[LOGIN] Etape 1 - GTK cookie obtenu:", gtkCookie ? "oui" : "non");
-    console.log("[LOGIN] Etape 1 - Cookies recus:", cookies.length);
+    // Etape 1 : GTK
+    const { cookies, gtkValue } = await getGtkCookies();
 
-    // Etape 2 : POST avec identifiants + cookies GTK + header X-Gtk
-    console.log("[LOGIN] Etape 2 - Envoi authentification...");
+    // Etape 2 : POST login
+    console.log("[LOGIN] Envoi authentification...");
     const response = await fetch(
       `${API_BASE}/login.awp?v=${API_VERSION}`,
       {
@@ -72,7 +84,7 @@ app.post("/api/login", async (req, res) => {
           motdepasse,
           isRelogin: false,
           uuid: "",
-          fa: [],
+          fa: fa || [],
         })}`,
         agent,
       }
@@ -80,82 +92,51 @@ app.post("/api/login", async (req, res) => {
 
     const loginCookies = extractCookies(response);
     const allCookies = [...cookies, ...loginCookies];
-
-    // Recuperer aussi le token depuis le header X-Token de la reponse
-    const responseToken = response.headers.get("x-token");
-
     const data = await response.json();
-    console.log("[LOGIN] Reponse code:", data.code, "message:", data.message);
-    console.log("[LOGIN] Token body:", data.token);
-    console.log("[LOGIN] Token header:", responseToken);
-    console.log("[LOGIN] Cookies GTK:", cookies.length, cookies.map(c => c.substring(0, 30) + "..."));
-    console.log("[LOGIN] Cookies login:", loginCookies.length, loginCookies.map(c => c.substring(0, 30) + "..."));
 
-    // Utiliser le token du header en priorite, sinon celui du body
-    const activeToken = data.token || responseToken || "";
+    console.log("[LOGIN] Code:", data.code, "Message:", data.message);
+    console.log("[LOGIN] Token:", data.token ? data.token.substring(0, 20) + "..." : "vide");
+    console.log("[LOGIN] Cookies login:", loginCookies.length);
 
-    // Code 250 = double authentification requise
-    if (data.code === 250 && activeToken) {
-      console.log("[LOGIN] Double auth requise, token utilise:", activeToken);
+    // Code 250 = double authentification requise (QCM)
+    if (data.code === 250 && data.token) {
+      console.log("[LOGIN] Double auth requise — recuperation question QCM...");
 
-      // Stocker les cookies pour l'etape suivante
-      pendingAuth.set(activeToken, allCookies);
+      // Stocker session pour les etapes suivantes
+      pendingAuth.set(data.token, {
+        cookies: allCookies,
+        gtkCookies: cookies,
+        gtkValue,
+        identifiant,
+        motdepasse,
+      });
 
-      // Demander a l'API ce qu'elle attend comme double auth
-      const daRes = await fetch(
-        `${API_BASE}/connexion/doubleauth.awp?verbe=get&v=${API_VERSION}`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded",
-            "User-Agent": UA,
-            "X-Token": activeToken,
-            Cookie: allCookies.join("; "),
-          },
-          body: "data={}",
-          agent,
-        }
-      );
-      const daData = await daRes.json();
-      console.log("[LOGIN] DoubleAuth GET:", JSON.stringify(daData, null, 2));
+      // Tenter de recuperer la question avec X-Token
+      let daData = await tryGetDoubleAuth(data.token, allCookies);
 
-      // Si le GET doubleauth echoue aussi, tenter sans cookies login (juste GTK)
+      // Si echec, tenter avec 2FA-Token
       if (daData.code === 520) {
-        console.log("[LOGIN] Retry doubleauth avec cookies GTK seuls...");
-        const daRes2 = await fetch(
-          `${API_BASE}/connexion/doubleauth.awp?verbe=get&v=${API_VERSION}`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/x-www-form-urlencoded",
-              "User-Agent": UA,
-              "X-Token": activeToken,
-              Cookie: cookies.join("; "),
-            },
-            body: "data={}",
-            agent,
-          }
-        );
-        const daData2 = await daRes2.json();
-        console.log("[LOGIN] DoubleAuth GET retry:", JSON.stringify(daData2, null, 2));
-
-        if (daData2.code !== 520) {
-          // Les cookies GTK seuls marchent, mettre a jour le store
-          pendingAuth.set(activeToken, cookies);
-          res.json({
-            code: 250,
-            token: activeToken,
-            message: "Double authentification requise",
-            doubleAuth: daData2.data || daData2,
-          });
-          return;
-        }
+        console.log("[LOGIN] Retry avec 2FA-Token...");
+        daData = await tryGetDoubleAuth(data.token, allCookies, true);
       }
 
-      // Renvoyer au frontend les infos de double auth
+      // Si echec, tenter avec cookies GTK seuls
+      if (daData.code === 520) {
+        console.log("[LOGIN] Retry avec cookies GTK seuls...");
+        daData = await tryGetDoubleAuth(data.token, cookies);
+      }
+
+      // Si echec, tenter avec cookies GTK seuls + 2FA-Token
+      if (daData.code === 520) {
+        console.log("[LOGIN] Retry avec cookies GTK + 2FA-Token...");
+        daData = await tryGetDoubleAuth(data.token, cookies, true);
+      }
+
+      console.log("[LOGIN] DoubleAuth GET final:", JSON.stringify(daData, null, 2));
+
       res.json({
         code: 250,
-        token: activeToken,
+        token: data.token,
         message: "Double authentification requise",
         doubleAuth: daData.data || daData,
       });
@@ -169,18 +150,48 @@ app.post("/api/login", async (req, res) => {
   }
 });
 
-// ── POST /api/doubleauth — valider la double authentification ──
+// ── Tenter un GET doubleauth avec differentes combinaisons de headers ──
+async function tryGetDoubleAuth(token, cookies, use2FA = false) {
+  const headers = {
+    "Content-Type": "application/x-www-form-urlencoded",
+    "User-Agent": UA,
+    Cookie: cookies.join("; "),
+  };
+
+  if (use2FA) {
+    headers["2FA-Token"] = token;
+    headers["X-Token"] = "";
+  } else {
+    headers["X-Token"] = token;
+  }
+
+  console.log("[DA-GET] Headers:", use2FA ? "2FA-Token" : "X-Token", "Cookies:", cookies.length);
+
+  const daRes = await fetch(
+    `${API_BASE}/connexion/doubleauth.awp?verbe=get&v=${API_VERSION}`,
+    {
+      method: "POST",
+      headers,
+      body: "data={}",
+      agent,
+    }
+  );
+  return await daRes.json();
+}
+
+// ── POST /api/doubleauth — soumettre la reponse QCM ──
 app.post("/api/doubleauth", async (req, res) => {
   try {
-    const { token, answer } = req.body;
-    const cookies = pendingAuth.get(token);
+    const { token, choix } = req.body;
+    const session = pendingAuth.get(token);
 
-    if (!cookies) {
+    if (!session) {
       return res.status(400).json({ error: "Session expiree, reconnectez-vous" });
     }
 
-    console.log("[DOUBLEAUTH] Envoi reponse:", JSON.stringify(answer));
+    console.log("[DA-POST] Envoi choix:", choix);
 
+    // Soumettre la reponse au QCM (utiliser 2FA-Token comme pour le GET)
     const response = await fetch(
       `${API_BASE}/connexion/doubleauth.awp?verbe=post&v=${API_VERSION}`,
       {
@@ -188,21 +199,71 @@ app.post("/api/doubleauth", async (req, res) => {
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
           "User-Agent": UA,
-          "X-Token": token,
-          Cookie: cookies.join("; "),
+          "2FA-Token": token,
+          "X-Token": "",
+          Cookie: session.cookies.join("; "),
         },
-        body: `data=${JSON.stringify(answer)}`,
+        body: `data=${JSON.stringify({ choix })}`,
         agent,
       }
     );
 
-    const data = await response.json();
-    console.log("[DOUBLEAUTH] Reponse:", JSON.stringify(data, null, 2));
+    const daData = await response.json();
+    console.log("[DA-POST] Reponse:", JSON.stringify(daData, null, 2));
+
+    // Si succes (code 200), on recoit cn + cv → re-login avec fa
+    if (daData.code === 200 && daData.data && daData.data.cn && daData.data.cv) {
+      console.log("[DA-POST] cn/cv recus — re-login avec fa...");
+
+      const fa = [{ cn: daData.data.cn, cv: daData.data.cv }];
+
+      // Re-obtenir un GTK frais
+      const { cookies: freshCookies, gtkValue: freshGtk } = await getGtkCookies();
+
+      const loginRes = await fetch(
+        `${API_BASE}/login.awp?v=${API_VERSION}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "User-Agent": UA,
+            "X-Token": "",
+            "X-Gtk": freshGtk,
+            Cookie: freshCookies.join("; "),
+          },
+          body: `data=${JSON.stringify({
+            identifiant: session.identifiant,
+            motdepasse: session.motdepasse,
+            isRelogin: false,
+            uuid: "",
+            fa,
+          })}`,
+          agent,
+        }
+      );
+
+      const loginData = await loginRes.json();
+      console.log("[DA-POST] Re-login code:", loginData.code, "message:", loginData.message);
+      console.log("[DA-POST] Re-login token:", loginData.token ? loginData.token.substring(0, 20) + "..." : "vide");
+      console.log("[DA-POST] Re-login accounts:", loginData.data && loginData.data.accounts ? loginData.data.accounts.length : "aucun");
+      if (loginData.data && loginData.data.accounts && loginData.data.accounts[0]) {
+        const acc = loginData.data.accounts[0];
+        console.log("[DA-POST] Account:", acc.id, acc.prenom, acc.nom, "type:", acc.typeCompte);
+        // Pour les comptes parents, trouver l'eleve
+        if (acc.profile && acc.profile.eleves) {
+          console.log("[DA-POST] Eleves:", JSON.stringify(acc.profile.eleves.map(e => ({ id: e.id, prenom: e.prenom, nom: e.nom }))));
+        }
+      }
+
+      pendingAuth.delete(token);
+      res.json(loginData);
+      return;
+    }
 
     pendingAuth.delete(token);
-    res.json(data);
+    res.json(daData);
   } catch (err) {
-    console.error("[DOUBLEAUTH] Erreur:", err.message);
+    console.error("[DA-POST] Erreur:", err.message);
     res.status(500).json({ error: err.message });
   }
 });

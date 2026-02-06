@@ -55,6 +55,34 @@ body {
   display: flex;
 }
 
+.da-propositions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.da-option {
+  padding: 14px 18px;
+  background: var(--bg-input);
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 15px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s;
+}
+
+.da-option:hover {
+  border-color: var(--accent);
+}
+
+.da-option.selected {
+  border-color: var(--accent);
+  background: rgba(79, 140, 255, 0.15);
+}
+
 #da-btn {
   width: 100%;
   padding: 13px;
@@ -354,6 +382,28 @@ body {
 .avg-good { color: var(--green); }
 .avg-mid { color: var(--orange); }
 .avg-bad { color: var(--red); }
+
+.chart-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.chart-header h3 {
+  font-size: 16px;
+}
+
+.chart-header select {
+  padding: 8px 12px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 13px;
+  outline: none;
+  cursor: pointer;
+}
 
 .chart-wrapper {
   background: var(--bg-card);

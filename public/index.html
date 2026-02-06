@@ -32,17 +32,15 @@
     </div>
   </div>
 
-  <!-- ══ DOUBLE AUTH ══ -->
+  <!-- ══ DOUBLE AUTH (QCM) ══ -->
   <div id="doubleauth-page" class="page">
     <div class="login-container">
       <h1>Verification</h1>
       <p class="login-subtitle" id="da-question">Double authentification requise</p>
       <form id="doubleauth-form">
-        <div class="input-group">
-          <label for="da-answer" id="da-label">Votre reponse</label>
-          <input type="text" id="da-answer" required>
-        </div>
-        <button type="submit" id="da-btn">Valider</button>
+        <div id="da-propositions" class="da-propositions"></div>
+        <input type="hidden" id="da-choix" value="">
+        <button type="submit" id="da-btn" disabled>Valider</button>
         <p id="da-error" class="error-msg"></p>
       </form>
     </div>
@@ -95,14 +93,18 @@
         <div class="panel-header">
           <h2>Notes par matiere</h2>
           <select id="trimester-select">
-            <option value="">Tous les trimestres</option>
-            <option value="A001">Trimestre 1</option>
-            <option value="A002">Trimestre 2</option>
-            <option value="A003">Trimestre 3</option>
+            <option value="A001">Semestre 1</option>
+            <option value="A002">Semestre 2</option>
           </select>
         </div>
         <div id="grades-container" class="grades-container">
           <p class="loading">Chargement des notes...</p>
+        </div>
+        <div class="chart-header">
+          <h3>Evolution des moyennes</h3>
+          <select id="chart-subject-select">
+            <option value="">Moyenne generale</option>
+          </select>
         </div>
         <div class="chart-wrapper">
           <canvas id="grades-chart"></canvas>
