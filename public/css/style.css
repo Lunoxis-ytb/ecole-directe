@@ -636,7 +636,7 @@ body::before {
   border: 1px solid var(--border-glass);
   border-radius: var(--radius);
   padding: 24px;
-  max-height: 350px;
+  height: 400px;
   box-shadow: var(--shadow);
 }
 
@@ -985,7 +985,7 @@ body::before {
   /* Chart mobile */
   .chart-wrapper {
     padding: 14px;
-    max-height: 280px;
+    height: 300px;
   }
 
   .chart-header {

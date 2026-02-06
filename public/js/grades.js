@@ -231,7 +231,7 @@ const Grades = {
     });
   },
 
-  // Graphique en ligne style trading
+  // Graphique avance avec notes individuelles + moyenne + gradient
   renderLineChart(subjectFilter) {
     const canvas = document.getElementById("grades-chart");
     if (!canvas) return;
@@ -240,6 +240,7 @@ const Grades = {
       this.chart.destroy();
     }
 
+    const ctx = canvas.getContext("2d");
     const notes = this.currentNotes || [];
 
     // Filtrer par matiere si besoin
@@ -265,10 +266,11 @@ const Grades = {
       return;
     }
 
-    // Calculer la moyenne cumulee (ligne eleve) + stocker les details
+    // Calculer les donnees
     const labels = [];
     const avgData = [];
-    const noteDetails = []; // Pour les tooltips
+    const individualData = [];
+    const noteDetails = [];
     let runningSum = 0;
 
     for (let i = 0; i < validNotes.length; i++) {
@@ -276,19 +278,36 @@ const Grades = {
       const val = (parseFloat(n.valeur) / parseFloat(n.noteSur)) * 20;
       runningSum += val;
       const runningAvg = runningSum / (i + 1);
+      const valRounded = parseFloat(val.toFixed(2));
 
       labels.push(new Date(n.date).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" }));
       avgData.push(parseFloat(runningAvg.toFixed(2)));
+      individualData.push(valRounded);
       noteDetails.push({
         matiere: n.libelleMatiere || "",
         valeur: n.valeur,
         noteSur: n.noteSur,
         devoir: n.devoir || "",
-        sur20: parseFloat(val.toFixed(2)),
+        sur20: valRounded,
       });
     }
 
-    // Ligne moyenne de classe (horizontale si on a la donnee)
+    // Couleurs par note (vert >= 14, orange >= 10, rouge < 10)
+    const pointColors = individualData.map(v =>
+      v >= 14 ? "#34d399" : v >= 10 ? "#fbbf24" : "#f87171"
+    );
+    const pointBorderColors = individualData.map(v =>
+      v >= 14 ? "rgba(52, 211, 153, 0.4)" : v >= 10 ? "rgba(251, 191, 36, 0.4)" : "rgba(248, 113, 113, 0.4)"
+    );
+
+    // Gradient sous la courbe moyenne
+    const chartHeight = canvas.parentElement ? canvas.parentElement.clientHeight : 300;
+    const gradient = ctx.createLinearGradient(0, 0, 0, chartHeight);
+    gradient.addColorStop(0, "rgba(108, 140, 255, 0.25)");
+    gradient.addColorStop(0.4, "rgba(108, 140, 255, 0.08)");
+    gradient.addColorStop(1, "rgba(108, 140, 255, 0)");
+
+    // Moyenne de classe
     const classAvgData = [];
     let classAvg = null;
 
@@ -298,7 +317,6 @@ const Grades = {
       );
       if (periode) {
         if (subjectFilter && periode.ensembleMatieres && periode.ensembleMatieres.disciplines) {
-          // Chercher la moyenne de classe pour cette matiere
           const disc = periode.ensembleMatieres.disciplines.find(
             (d) => d.codeMatiere === subjectFilter
           );
@@ -318,32 +336,71 @@ const Grades = {
       }
     }
 
+    // Datasets
     const datasets = [
+      // Notes individuelles (points colores)
+      {
+        label: "Notes",
+        data: individualData,
+        borderColor: "transparent",
+        backgroundColor: pointColors,
+        pointRadius: 6,
+        pointHoverRadius: 9,
+        pointBorderColor: pointBorderColors,
+        pointBorderWidth: 3,
+        pointHoverBorderColor: "#fff",
+        pointHoverBorderWidth: 2,
+        showLine: false,
+        fill: false,
+        order: 1,
+      },
+      // Moyenne cumulee (ligne avec gradient)
       {
         label: "Ma moyenne",
         data: avgData,
-        borderColor: "#4f8cff",
-        backgroundColor: "rgba(79, 140, 255, 0.1)",
-        borderWidth: 2.5,
-        pointRadius: 4,
-        pointBackgroundColor: "#4f8cff",
-        tension: 0.3,
+        borderColor: "#6c8cff",
+        backgroundColor: gradient,
+        borderWidth: 3,
+        pointRadius: 0,
+        pointHoverRadius: 7,
+        pointHoverBackgroundColor: "#6c8cff",
+        pointHoverBorderColor: "#fff",
+        pointHoverBorderWidth: 3,
+        tension: 0.4,
         fill: true,
+        order: 2,
       },
     ];
 
+    // Ligne moyenne classe
     if (classAvgData.length > 0) {
       datasets.push({
         label: "Moyenne classe",
         data: classAvgData,
-        borderColor: "#f87171",
+        borderColor: "rgba(139, 92, 246, 0.6)",
         borderWidth: 2,
-        borderDash: [6, 4],
+        borderDash: [8, 4],
         pointRadius: 0,
+        pointHoverRadius: 0,
         tension: 0,
         fill: false,
+        order: 3,
       });
     }
+
+    // Ligne seuil 10/20
+    datasets.push({
+      label: "Seuil 10/20",
+      data: Array(labels.length).fill(10),
+      borderColor: "rgba(248, 113, 113, 0.2)",
+      borderWidth: 1,
+      borderDash: [3, 3],
+      pointRadius: 0,
+      pointHoverRadius: 0,
+      tension: 0,
+      fill: false,
+      order: 4,
+    });
 
     this.chart = new Chart(canvas, {
       type: "line",
@@ -351,6 +408,10 @@ const Grades = {
       options: {
         responsive: true,
         maintainAspectRatio: false,
+        animation: {
+          duration: 1200,
+          easing: "easeOutQuart",
+        },
         interaction: {
           intersect: false,
           mode: "index",
@@ -358,41 +419,65 @@ const Grades = {
         plugins: {
           legend: {
             display: true,
-            labels: { color: "#9aa0b0", usePointStyle: true },
+            labels: {
+              color: "#9aa0b0",
+              usePointStyle: true,
+              padding: 20,
+              font: { size: 12 },
+              filter(item) {
+                return item.text !== "Seuil 10/20";
+              },
+            },
           },
           tooltip: {
             backgroundColor: "rgba(10, 14, 26, 0.95)",
             titleColor: "#f0f2f5",
             bodyColor: "#f0f2f5",
-            borderColor: "rgba(108, 140, 255, 0.3)",
+            borderColor: "rgba(108, 140, 255, 0.25)",
             borderWidth: 1,
-            padding: 12,
-            bodySpacing: 6,
+            padding: 14,
+            bodySpacing: 8,
             titleFont: { weight: "600", size: 13 },
             bodyFont: { size: 12 },
+            cornerRadius: 10,
+            displayColors: true,
+            boxPadding: 4,
             callbacks: {
-              afterTitle(context) {
+              title(context) {
                 const idx = context[0].dataIndex;
                 const detail = noteDetails[idx];
-                if (!detail) return "";
-                let line = `${detail.matiere}: ${detail.valeur}/${detail.noteSur}`;
-                if (parseFloat(detail.noteSur) !== 20) {
-                  line += ` (${detail.sur20}/20)`;
-                }
-                if (detail.devoir) {
-                  line += `\n${detail.devoir}`;
-                }
-                return line;
-              },
-              afterTitleColor() {
-                return { color: "#6c8cff" };
+                if (!detail) return context[0].label;
+                return `${context[0].label} - ${detail.matiere}`;
               },
               label(context) {
+                const idx = context.dataIndex;
+                const detail = noteDetails[idx];
+                if (context.dataset.label === "Notes" && detail) {
+                  let txt = `Note: ${detail.valeur}/${detail.noteSur}`;
+                  if (parseFloat(detail.noteSur) !== 20) {
+                    txt += ` (${detail.sur20}/20)`;
+                  }
+                  return txt;
+                }
                 if (context.dataset.label === "Ma moyenne") {
                   return `Moyenne: ${context.parsed.y}/20`;
                 }
-                return `${context.dataset.label}: ${context.parsed.y}`;
+                if (context.dataset.label === "Moyenne classe") {
+                  return `Classe: ${context.parsed.y}/20`;
+                }
+                return null;
               },
+              afterBody(context) {
+                const idx = context[0].dataIndex;
+                const detail = noteDetails[idx];
+                if (detail && detail.devoir) {
+                  return [detail.devoir];
+                }
+                return [];
+              },
+            },
+            filter(tooltipItem) {
+              return tooltipItem.dataset.label !== "Seuil 10/20";
             },
           },
         },
@@ -400,12 +485,26 @@ const Grades = {
           y: {
             beginAtZero: true,
             max: 20,
-            grid: { color: "rgba(255,255,255,0.06)" },
-            ticks: { color: "#9aa0b0" },
+            grid: {
+              color(context) {
+                return context.tick.value === 10
+                  ? "rgba(248, 113, 113, 0.15)"
+                  : "rgba(255, 255, 255, 0.04)";
+              },
+            },
+            ticks: {
+              color: "#9aa0b0",
+              font: { size: 11 },
+              stepSize: 2,
+            },
           },
           x: {
             grid: { display: false },
-            ticks: { color: "#9aa0b0", maxRotation: 45 },
+            ticks: {
+              color: "#9aa0b0",
+              maxRotation: 45,
+              font: { size: 11 },
+            },
           },
         },
       },
