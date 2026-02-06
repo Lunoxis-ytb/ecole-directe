@@ -17,6 +17,79 @@ const UA =
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// ══ PROTECTION PAR MOT DE PASSE ══
+const APP_PASSWORD = process.env.APP_PASSWORD;
+
+// Page de mot de passe
+const PASSWORD_PAGE = `<!DOCTYPE html>
+<html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Acces protege</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#0a0e1a;color:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,sans-serif;
+    display:flex;align-items:center;justify-content:center;min-height:100vh}
+  .box{background:#141825;border:1px solid rgba(108,140,255,.15);border-radius:16px;padding:40px;
+    width:340px;text-align:center}
+  h2{margin-bottom:8px;font-size:20px}
+  p{color:#9aa0b0;font-size:14px;margin-bottom:24px}
+  input{width:100%;padding:12px 14px;background:#1a1f2e;border:1px solid rgba(108,140,255,.2);
+    border-radius:8px;color:#f0f2f5;font-size:15px;margin-bottom:16px;outline:none}
+  input:focus{border-color:#4f8cff}
+  button{width:100%;padding:12px;background:#4f8cff;color:#fff;border:none;border-radius:8px;
+    font-size:15px;font-weight:600;cursor:pointer}
+  button:hover{background:#3d7ae8}
+  .error{color:#f87171;font-size:13px;margin-bottom:12px;display:none}
+</style></head><body>
+<div class="box">
+  <h2>EcoleDirecte Dashboard</h2>
+  <p>Entrez le mot de passe pour acceder</p>
+  <form method="POST" action="/auth">
+    <div class="error" id="err">Mot de passe incorrect</div>
+    <input type="password" name="password" placeholder="Mot de passe" autofocus required>
+    <button type="submit">Acceder</button>
+  </form>
+</div>
+<script>if(location.search.includes('wrong'))document.getElementById('err').style.display='block'</script>
+</body></html>`;
+
+// Endpoint d'authentification
+app.post("/auth", (req, res) => {
+  if (req.body.password === APP_PASSWORD) {
+    // Cookie d'auth valide 30 jours
+    res.cookie("app_auth", APP_PASSWORD, { maxAge: 30 * 24 * 60 * 60 * 1000, httpOnly: true });
+    res.redirect("/");
+  } else {
+    res.redirect("/gate?wrong=1");
+  }
+});
+
+app.get("/gate", (req, res) => {
+  res.send(PASSWORD_PAGE);
+});
+
+// Middleware : bloquer si pas authentifie (seulement si APP_PASSWORD est defini)
+if (APP_PASSWORD) {
+  app.use((req, res, next) => {
+    // Laisser passer /auth et /gate
+    if (req.path === "/auth" || req.path === "/gate") return next();
+
+    // Verifier le cookie
+    const cookies = req.headers.cookie || "";
+    const authCookie = cookies.split(";").map(c => c.trim()).find(c => c.startsWith("app_auth="));
+    const cookieValue = authCookie ? authCookie.split("=").slice(1).join("=") : "";
+
+    if (cookieValue === APP_PASSWORD) {
+      return next();
+    }
+
+    // Non authentifie → rediriger vers la page de mot de passe
+    if (req.path.startsWith("/api/")) {
+      return res.status(401).json({ error: "Non authentifie" });
+    }
+    res.redirect("/gate");
+  });
+}
+
 // Log toutes les requetes API
 app.use("/api", (req, res, next) => {
   console.log(`[REQ] ${req.method} ${req.url}`);
