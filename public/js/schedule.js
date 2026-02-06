@@ -48,24 +48,28 @@ const Schedule = {
       `${startLabel} - ${endLabel} ${weekEnd.getFullYear()}`;
 
     // ── Cache-first : afficher le cache immediatement ──
+    let currentEvents = null;
     const cached = await API.loadScheduleCache(dateDebut);
     if (cached && cached.data) {
       console.log("[SCHEDULE] Cache trouve pour semaine", dateDebut);
       this.render(cached.data);
-      this.updateNextClass(cached.data);
+      currentEvents = cached.data;
     }
 
     // ── Puis fetch les donnees fraiches ──
     const result = await API.getSchedule(dateDebut, dateFin);
     if (result.success) {
       this.render(result.data);
-      this.updateNextClass(result.data);
+      currentEvents = result.data;
 
       // Sauvegarder en cache (fire-and-forget)
       API.saveScheduleCache(dateDebut, result.data);
     } else if (!cached) {
       container.innerHTML = `<p class="loading">Erreur : ${result.message}</p>`;
     }
+
+    // Toujours chercher le prochain cours (meme sans donnees cette semaine)
+    await this.updateNextClass(currentEvents);
   },
 
   render(events) {
@@ -168,11 +172,13 @@ const Schedule = {
 
   async updateNextClass(events) {
     const now = new Date();
+    const el = document.getElementById("stat-next-class");
     let nextClass = null;
 
-    // Chercher dans les evenements fournis
-    if (events && events.length > 0) {
-      for (const ev of events) {
+    // Chercher un cours futur dans les evenements
+    function findNext(evList) {
+      if (!evList || evList.length === 0) return;
+      for (const ev of evList) {
         const startStr = ev.start_date || ev.startDate;
         if (!startStr) continue;
         const start = new Date(startStr.replace(" ", "T"));
@@ -182,30 +188,30 @@ const Schedule = {
       }
     }
 
-    // Si rien trouve, chercher dans la semaine suivante
-    if (!nextClass) {
-      const nextWeekStart = new Date(this.currentWeekStart);
-      nextWeekStart.setDate(nextWeekStart.getDate() + 7);
-      const nextWeekEnd = new Date(nextWeekStart);
-      nextWeekEnd.setDate(nextWeekEnd.getDate() + 4);
+    // 1. Chercher dans les evenements de la semaine courante
+    findNext(events);
 
-      const result = await API.getSchedule(
-        this.formatDate(nextWeekStart),
-        this.formatDate(nextWeekEnd)
-      );
-      if (result.success && result.data) {
-        for (const ev of result.data) {
-          const startStr = ev.start_date || ev.startDate;
-          if (!startStr) continue;
-          const start = new Date(startStr.replace(" ", "T"));
-          if (start > now && (!nextClass || start < nextClass.start)) {
-            nextClass = { start, subject: ev.matiere || ev.text || "Cours" };
-          }
+    // 2. Si rien, chercher jusqu'a 4 semaines en avance (vacances, etc.)
+    if (!nextClass) {
+      for (let w = 1; w <= 4; w++) {
+        const weekStart = new Date(this.currentWeekStart);
+        weekStart.setDate(weekStart.getDate() + 7 * w);
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekEnd.getDate() + 4);
+
+        console.log(`[SCHEDULE] Recherche prochain cours semaine +${w}:`, this.formatDate(weekStart));
+        const result = await API.getSchedule(
+          this.formatDate(weekStart),
+          this.formatDate(weekEnd)
+        );
+        if (result.success && result.data && result.data.length > 0) {
+          findNext(result.data);
+          if (nextClass) break;
         }
       }
     }
 
-    const el = document.getElementById("stat-next-class");
+    // Afficher le resultat
     if (nextClass) {
       const isToday = nextClass.start.toDateString() === now.toDateString();
       const tomorrow = new Date(now);
@@ -223,11 +229,11 @@ const Schedule = {
       } else if (isTomorrow) {
         dayLabel = "demain";
       } else {
-        dayLabel = nextClass.start.toLocaleDateString("fr-FR", { weekday: "short" });
+        dayLabel = nextClass.start.toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" });
       }
 
       el.textContent = `${nextClass.subject} ${dayLabel} ${timeStr}`;
-      el.style.fontSize = "14px";
+      el.style.fontSize = "13px";
     } else {
       el.textContent = "Aucun";
       el.style.fontSize = "";
