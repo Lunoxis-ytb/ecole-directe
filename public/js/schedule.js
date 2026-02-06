@@ -166,36 +166,71 @@ const Schedule = {
     }
   },
 
-  updateNextClass(events) {
-    if (!events || events.length === 0) return;
-
+  async updateNextClass(events) {
     const now = new Date();
     let nextClass = null;
 
-    for (const ev of events) {
-      const startStr = ev.start_date || ev.startDate;
-      if (!startStr) continue;
-
-      const start = new Date(startStr.replace(" ", "T"));
-      if (start > now && (!nextClass || start < nextClass.start)) {
-        nextClass = {
-          start,
-          subject: ev.matiere || ev.text || "Cours",
-        };
+    // Chercher dans les evenements fournis
+    if (events && events.length > 0) {
+      for (const ev of events) {
+        const startStr = ev.start_date || ev.startDate;
+        if (!startStr) continue;
+        const start = new Date(startStr.replace(" ", "T"));
+        if (start > now && (!nextClass || start < nextClass.start)) {
+          nextClass = { start, subject: ev.matiere || ev.text || "Cours" };
+        }
       }
     }
 
+    // Si rien trouve, chercher dans la semaine suivante
+    if (!nextClass) {
+      const nextWeekStart = new Date(this.currentWeekStart);
+      nextWeekStart.setDate(nextWeekStart.getDate() + 7);
+      const nextWeekEnd = new Date(nextWeekStart);
+      nextWeekEnd.setDate(nextWeekEnd.getDate() + 4);
+
+      const result = await API.getSchedule(
+        this.formatDate(nextWeekStart),
+        this.formatDate(nextWeekEnd)
+      );
+      if (result.success && result.data) {
+        for (const ev of result.data) {
+          const startStr = ev.start_date || ev.startDate;
+          if (!startStr) continue;
+          const start = new Date(startStr.replace(" ", "T"));
+          if (start > now && (!nextClass || start < nextClass.start)) {
+            nextClass = { start, subject: ev.matiere || ev.text || "Cours" };
+          }
+        }
+      }
+    }
+
+    const el = document.getElementById("stat-next-class");
     if (nextClass) {
+      const isToday = nextClass.start.toDateString() === now.toDateString();
+      const tomorrow = new Date(now);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const isTomorrow = nextClass.start.toDateString() === tomorrow.toDateString();
+
       const timeStr = nextClass.start.toLocaleTimeString("fr-FR", {
         hour: "2-digit",
         minute: "2-digit",
       });
-      const dayStr = nextClass.start.toLocaleDateString("fr-FR", {
-        weekday: "short",
-      });
-      document.getElementById("stat-next-class").textContent =
-        `${nextClass.subject} ${dayStr} ${timeStr}`;
-      document.getElementById("stat-next-class").style.fontSize = "14px";
+
+      let dayLabel;
+      if (isToday) {
+        dayLabel = "auj.";
+      } else if (isTomorrow) {
+        dayLabel = "demain";
+      } else {
+        dayLabel = nextClass.start.toLocaleDateString("fr-FR", { weekday: "short" });
+      }
+
+      el.textContent = `${nextClass.subject} ${dayLabel} ${timeStr}`;
+      el.style.fontSize = "14px";
+    } else {
+      el.textContent = "Aucun";
+      el.style.fontSize = "";
     }
   },
 };

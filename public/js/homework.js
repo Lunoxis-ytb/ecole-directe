@@ -160,7 +160,10 @@ const Homework = {
 
   updateStats() {
     const data = this.rawData;
-    if (!data) return;
+    if (!data || typeof data !== "object" || Object.keys(data).length === 0) {
+      document.getElementById("stat-homework").textContent = "0";
+      return;
+    }
 
     const now = new Date();
     let count = 0;

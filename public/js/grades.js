@@ -80,22 +80,42 @@ const Grades = {
 
     // Recuperer les rangs par matiere depuis les periodes
     const ranksMap = {};
-    let generalRank = "--";
+    let generalRank = null;
     if (data.periodes && semesterFilter) {
       const periode = data.periodes.find((p) => p.codePeriode === semesterFilter);
       if (periode && periode.ensembleMatieres && periode.ensembleMatieres.disciplines) {
         for (const disc of periode.ensembleMatieres.disciplines) {
           const rank = disc.rang || disc.rangEleve || disc.classement;
-          if (rank) {
+          if (rank != null && rank !== "" && rank !== 0) {
             ranksMap[disc.codeMatiere] = rank;
           }
         }
       }
-      // Rang general
+      // Rang general - recherche exhaustive dans tous les champs possibles
       if (periode) {
-        generalRank = periode.rangEleve || periode.rang
-          || (periode.ensembleMatieres && (periode.ensembleMatieres.rangEleve || periode.ensembleMatieres.rang))
-          || "--";
+        const em = periode.ensembleMatieres || {};
+        generalRank = periode.rangEleve || periode.rang || periode.classement
+          || em.rangEleve || em.rang || em.classement || em.rangGeneral
+          || null;
+
+        // Fallback : chercher dans disciplines une entree "ensemble" (codeMatiere vide ou sous-matiere false)
+        if (!generalRank && em.disciplines) {
+          for (const disc of em.disciplines) {
+            if (disc.sousMatiere === false || disc.codeMatiere === "" || disc.id === 0) {
+              const r = disc.rang || disc.rangEleve || disc.classement;
+              if (r) { generalRank = r; break; }
+            }
+          }
+        }
+
+        console.log("[GRADES] Rank debug:", JSON.stringify({
+          "periode.rangEleve": periode.rangEleve,
+          "periode.rang": periode.rang,
+          "em.rangEleve": em.rangEleve,
+          "em.rang": em.rang,
+          "found": generalRank,
+          "emKeys": Object.keys(em).filter(k => k !== "disciplines"),
+        }));
       }
     }
 
@@ -119,7 +139,7 @@ const Grades = {
 
     // Mettre a jour le rang general dans les stats
     const rankEl = document.getElementById("stat-rank");
-    if (rankEl) rankEl.textContent = generalRank;
+    if (rankEl) rankEl.textContent = generalRank || "N/A";
 
     let html = `<table class="grades-table">
       <thead>
