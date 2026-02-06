@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EcoleDirecte Dashboard</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+  <!-- ══ LOGIN ══ -->
+  <div id="login-page" class="page active">
+    <div class="login-container">
+      <h1>EcoleDirecte</h1>
+      <p class="login-subtitle">Connectez-vous pour acceder a votre dashboard</p>
+      <form id="login-form">
+        <div class="input-group">
+          <label for="username">Identifiant</label>
+          <input type="text" id="username" autocomplete="username" required>
+        </div>
+        <div class="input-group">
+          <label for="password">Mot de passe</label>
+          <div class="password-wrapper">
+            <input type="password" id="password" autocomplete="current-password" required>
+            <button type="button" id="toggle-password" class="btn-eye" title="Afficher le mot de passe">&#128065;</button>
+          </div>
+        </div>
+        <button type="submit" id="login-btn">Se connecter</button>
+        <p id="login-error" class="error-msg"></p>
+      </form>
+    </div>
+  </div>
+
+  <!-- ══ DOUBLE AUTH ══ -->
+  <div id="doubleauth-page" class="page">
+    <div class="login-container">
+      <h1>Verification</h1>
+      <p class="login-subtitle" id="da-question">Double authentification requise</p>
+      <form id="doubleauth-form">
+        <div class="input-group">
+          <label for="da-answer" id="da-label">Votre reponse</label>
+          <input type="text" id="da-answer" required>
+        </div>
+        <button type="submit" id="da-btn">Valider</button>
+        <p id="da-error" class="error-msg"></p>
+      </form>
+    </div>
+  </div>
+
+  <!-- ══ DASHBOARD ══ -->
+  <div id="dashboard-page" class="page">
+
+    <!-- Header -->
+    <header class="dashboard-header">
+      <div class="header-left">
+        <h1>Dashboard</h1>
+        <span id="student-name" class="student-name"></span>
+      </div>
+      <button id="logout-btn" class="btn-logout">Deconnexion</button>
+    </header>
+
+    <!-- Stats bar -->
+    <div class="stats-bar">
+      <div class="stat-card">
+        <span class="stat-label">Moyenne generale</span>
+        <span class="stat-value" id="stat-avg">--</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">Moyenne classe</span>
+        <span class="stat-value" id="stat-class-avg">--</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">Devoirs a faire</span>
+        <span class="stat-value" id="stat-homework">--</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">Prochain cours</span>
+        <span class="stat-value" id="stat-next-class">--</span>
+      </div>
+    </div>
+
+    <!-- Navigation tabs -->
+    <nav class="tabs">
+      <button class="tab active" data-tab="grades">Notes</button>
+      <button class="tab" data-tab="homework">Devoirs</button>
+      <button class="tab" data-tab="schedule">Emploi du temps</button>
+    </nav>
+
+    <!-- Tab content -->
+    <main class="tab-content">
+
+      <!-- Notes -->
+      <section id="tab-grades" class="tab-panel active">
+        <div class="panel-header">
+          <h2>Notes par matiere</h2>
+          <select id="trimester-select">
+            <option value="">Tous les trimestres</option>
+            <option value="A001">Trimestre 1</option>
+            <option value="A002">Trimestre 2</option>
+            <option value="A003">Trimestre 3</option>
+          </select>
+        </div>
+        <div id="grades-container" class="grades-container">
+          <p class="loading">Chargement des notes...</p>
+        </div>
+        <div class="chart-wrapper">
+          <canvas id="grades-chart"></canvas>
+        </div>
+      </section>
+
+      <!-- Devoirs -->
+      <section id="tab-homework" class="tab-panel">
+        <div class="panel-header">
+          <h2>Cahier de texte</h2>
+        </div>
+        <div id="homework-container" class="homework-container">
+          <p class="loading">Chargement des devoirs...</p>
+        </div>
+      </section>
+
+      <!-- Emploi du temps -->
+      <section id="tab-schedule" class="tab-panel">
+        <div class="panel-header">
+          <h2>Emploi du temps</h2>
+          <div class="week-nav">
+            <button id="prev-week" class="btn-nav">&larr; Semaine prec.</button>
+            <span id="week-label">--</span>
+            <button id="next-week" class="btn-nav">Semaine suiv. &rarr;</button>
+          </div>
+        </div>
+        <div id="schedule-container" class="schedule-container">
+          <p class="loading">Chargement de l'emploi du temps...</p>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/grades.js"></script>
+  <script src="/js/homework.js"></script>
+  <script src="/js/schedule.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>
