@@ -202,8 +202,9 @@ const Grades = {
       });
     });
 
-    // Graphique ligne
+    // Graphiques
     this.renderLineChart();
+    this.renderClassChart();
   },
 
   // Remplir le selecteur de matieres pour le graphique
@@ -231,19 +232,16 @@ const Grades = {
     });
   },
 
-  // Graphique avance avec notes individuelles + moyenne + gradient
+  // Graphique 1 : Evolution de ma moyenne personnelle
   renderLineChart(subjectFilter) {
     const canvas = document.getElementById("grades-chart");
     if (!canvas) return;
 
-    if (this.chart) {
-      this.chart.destroy();
-    }
+    if (this.chart) this.chart.destroy();
 
     const ctx = canvas.getContext("2d");
     const notes = this.currentNotes || [];
 
-    // Filtrer par matiere si besoin
     let filtered = notes;
     if (subjectFilter) {
       filtered = notes.filter(
@@ -251,14 +249,8 @@ const Grades = {
       );
     }
 
-    // Ne garder que les notes valides avec une date
     const validNotes = filtered
-      .filter(
-        (n) =>
-          n.date &&
-          !isNaN(parseFloat(n.valeur)) &&
-          !isNaN(parseFloat(n.noteSur))
-      )
+      .filter((n) => n.date && !isNaN(parseFloat(n.valeur)) && !isNaN(parseFloat(n.noteSur)))
       .sort((a, b) => new Date(a.date) - new Date(b.date));
 
     if (validNotes.length === 0) {
@@ -266,7 +258,6 @@ const Grades = {
       return;
     }
 
-    // Calculer les donnees
     const labels = [];
     const avgData = [];
     const individualData = [];
@@ -277,11 +268,10 @@ const Grades = {
       const n = validNotes[i];
       const val = (parseFloat(n.valeur) / parseFloat(n.noteSur)) * 20;
       runningSum += val;
-      const runningAvg = runningSum / (i + 1);
       const valRounded = parseFloat(val.toFixed(2));
 
       labels.push(new Date(n.date).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" }));
-      avgData.push(parseFloat(runningAvg.toFixed(2)));
+      avgData.push(parseFloat((runningSum / (i + 1)).toFixed(2)));
       individualData.push(valRounded);
       noteDetails.push({
         matiere: n.libelleMatiere || "",
@@ -292,192 +282,83 @@ const Grades = {
       });
     }
 
-    // Couleurs par note (vert >= 14, orange >= 10, rouge < 10)
-    const pointColors = individualData.map(v =>
-      v >= 14 ? "#34d399" : v >= 10 ? "#fbbf24" : "#f87171"
-    );
-    const pointBorderColors = individualData.map(v =>
-      v >= 14 ? "rgba(52, 211, 153, 0.4)" : v >= 10 ? "rgba(251, 191, 36, 0.4)" : "rgba(248, 113, 113, 0.4)"
-    );
-
-    // Gradient sous la courbe moyenne
-    const chartHeight = canvas.parentElement ? canvas.parentElement.clientHeight : 300;
-    const gradient = ctx.createLinearGradient(0, 0, 0, chartHeight);
-    gradient.addColorStop(0, "rgba(108, 140, 255, 0.25)");
-    gradient.addColorStop(0.4, "rgba(108, 140, 255, 0.08)");
-    gradient.addColorStop(1, "rgba(108, 140, 255, 0)");
-
-    // Moyenne de classe
-    const classAvgData = [];
-    let classAvg = null;
-
-    if (this.rawData.periodes && this.currentSemester) {
-      const periode = this.rawData.periodes.find(
-        (p) => p.codePeriode === this.currentSemester
-      );
-      if (periode) {
-        if (subjectFilter && periode.ensembleMatieres && periode.ensembleMatieres.disciplines) {
-          const disc = periode.ensembleMatieres.disciplines.find(
-            (d) => d.codeMatiere === subjectFilter
-          );
-          if (disc && disc.moyenneClasse) {
-            classAvg = parseFloat(disc.moyenneClasse.replace(",", "."));
-          }
-        }
-        if (!classAvg && periode.moyenneClasse) {
-          classAvg = parseFloat(periode.moyenneClasse.replace(",", "."));
-        }
-      }
-    }
-
-    if (classAvg) {
-      for (let i = 0; i < labels.length; i++) {
-        classAvgData.push(classAvg);
-      }
-    }
-
-    // Datasets
-    const datasets = [
-      // Notes individuelles (points colores)
-      {
-        label: "Notes",
-        data: individualData,
-        borderColor: "transparent",
-        backgroundColor: pointColors,
-        pointRadius: 6,
-        pointHoverRadius: 9,
-        pointBorderColor: pointBorderColors,
-        pointBorderWidth: 3,
-        pointHoverBorderColor: "#fff",
-        pointHoverBorderWidth: 2,
-        showLine: false,
-        fill: false,
-        order: 1,
-      },
-      // Moyenne cumulee (ligne avec gradient)
-      {
-        label: "Ma moyenne",
-        data: avgData,
-        borderColor: "#6c8cff",
-        backgroundColor: gradient,
-        borderWidth: 3,
-        pointRadius: 0,
-        pointHoverRadius: 7,
-        pointHoverBackgroundColor: "#6c8cff",
-        pointHoverBorderColor: "#fff",
-        pointHoverBorderWidth: 3,
-        tension: 0.4,
-        fill: true,
-        order: 2,
-      },
-    ];
-
-    // Ligne moyenne classe
-    if (classAvgData.length > 0) {
-      datasets.push({
-        label: "Moyenne classe",
-        data: classAvgData,
-        borderColor: "rgba(139, 92, 246, 0.6)",
-        borderWidth: 2,
-        borderDash: [8, 4],
-        pointRadius: 0,
-        pointHoverRadius: 0,
-        tension: 0,
-        fill: false,
-        order: 3,
-      });
-    }
-
-    // Ligne seuil 10/20
-    datasets.push({
-      label: "Seuil 10/20",
-      data: Array(labels.length).fill(10),
-      borderColor: "rgba(248, 113, 113, 0.2)",
-      borderWidth: 1,
-      borderDash: [3, 3],
-      pointRadius: 0,
-      pointHoverRadius: 0,
-      tension: 0,
-      fill: false,
-      order: 4,
-    });
+    // Gradient bleu sous la courbe
+    const h = canvas.parentElement ? canvas.parentElement.clientHeight : 300;
+    const gradient = ctx.createLinearGradient(0, 0, 0, h);
+    gradient.addColorStop(0, "rgba(79, 140, 255, 0.20)");
+    gradient.addColorStop(1, "rgba(79, 140, 255, 0)");
 
     this.chart = new Chart(canvas, {
       type: "line",
-      data: { labels, datasets },
+      data: {
+        labels,
+        datasets: [
+          {
+            label: "Moyenne",
+            data: avgData,
+            borderColor: "#4f8cff",
+            backgroundColor: gradient,
+            borderWidth: 2.5,
+            pointRadius: 3,
+            pointBackgroundColor: "#4f8cff",
+            pointHoverRadius: 6,
+            pointHoverBackgroundColor: "#4f8cff",
+            pointHoverBorderColor: "#fff",
+            pointHoverBorderWidth: 2,
+            tension: 0.35,
+            fill: true,
+          },
+          {
+            label: "Notes",
+            data: individualData,
+            showLine: false,
+            pointRadius: 5,
+            pointHoverRadius: 8,
+            pointBackgroundColor: individualData.map(v =>
+              v >= 14 ? "#34d399" : v >= 10 ? "#fbbf24" : "#f87171"
+            ),
+            pointBorderColor: individualData.map(v =>
+              v >= 14 ? "rgba(52,211,153,0.3)" : v >= 10 ? "rgba(251,191,36,0.3)" : "rgba(248,113,113,0.3)"
+            ),
+            pointBorderWidth: 2,
+          },
+        ],
+      },
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        animation: {
-          duration: 1200,
-          easing: "easeOutQuart",
-        },
-        interaction: {
-          intersect: false,
-          mode: "index",
-        },
+        animation: { duration: 800, easing: "easeOutQuart" },
+        interaction: { intersect: false, mode: "index" },
         plugins: {
           legend: {
             display: true,
-            labels: {
-              color: "#9aa0b0",
-              usePointStyle: true,
-              padding: 20,
-              font: { size: 12 },
-              filter(item) {
-                return item.text !== "Seuil 10/20";
-              },
-            },
+            labels: { color: "#9aa0b0", usePointStyle: true, padding: 16, font: { size: 11 } },
           },
           tooltip: {
             backgroundColor: "rgba(10, 14, 26, 0.95)",
             titleColor: "#f0f2f5",
             bodyColor: "#f0f2f5",
-            borderColor: "rgba(108, 140, 255, 0.25)",
+            borderColor: "rgba(79, 140, 255, 0.2)",
             borderWidth: 1,
-            padding: 14,
-            bodySpacing: 8,
-            titleFont: { weight: "600", size: 13 },
-            bodyFont: { size: 12 },
-            cornerRadius: 10,
-            displayColors: true,
-            boxPadding: 4,
+            padding: 12,
+            cornerRadius: 8,
             callbacks: {
-              title(context) {
-                const idx = context[0].dataIndex;
-                const detail = noteDetails[idx];
-                if (!detail) return context[0].label;
-                return `${context[0].label} - ${detail.matiere}`;
+              title(ctx) {
+                const d = noteDetails[ctx[0].dataIndex];
+                return d ? `${ctx[0].label} — ${d.matiere}` : ctx[0].label;
               },
-              label(context) {
-                const idx = context.dataIndex;
-                const detail = noteDetails[idx];
-                if (context.dataset.label === "Notes" && detail) {
-                  let txt = `Note: ${detail.valeur}/${detail.noteSur}`;
-                  if (parseFloat(detail.noteSur) !== 20) {
-                    txt += ` (${detail.sur20}/20)`;
-                  }
-                  return txt;
+              label(ctx) {
+                const d = noteDetails[ctx.dataIndex];
+                if (ctx.dataset.label === "Notes" && d) {
+                  return `Note: ${d.valeur}/${d.noteSur}${parseFloat(d.noteSur) !== 20 ? ` (${d.sur20}/20)` : ""}`;
                 }
-                if (context.dataset.label === "Ma moyenne") {
-                  return `Moyenne: ${context.parsed.y}/20`;
-                }
-                if (context.dataset.label === "Moyenne classe") {
-                  return `Classe: ${context.parsed.y}/20`;
-                }
+                if (ctx.dataset.label === "Moyenne") return `Moyenne: ${ctx.parsed.y}/20`;
                 return null;
               },
-              afterBody(context) {
-                const idx = context[0].dataIndex;
-                const detail = noteDetails[idx];
-                if (detail && detail.devoir) {
-                  return [detail.devoir];
-                }
-                return [];
+              afterBody(ctx) {
+                const d = noteDetails[ctx[0].dataIndex];
+                return d && d.devoir ? [d.devoir] : [];
               },
-            },
-            filter(tooltipItem) {
-              return tooltipItem.dataset.label !== "Seuil 10/20";
             },
           },
         },
@@ -485,26 +366,122 @@ const Grades = {
           y: {
             beginAtZero: true,
             max: 20,
-            grid: {
-              color(context) {
-                return context.tick.value === 10
-                  ? "rgba(248, 113, 113, 0.15)"
-                  : "rgba(255, 255, 255, 0.04)";
-              },
-            },
-            ticks: {
-              color: "#9aa0b0",
-              font: { size: 11 },
-              stepSize: 2,
-            },
+            grid: { color: "rgba(255,255,255,0.04)" },
+            ticks: { color: "#9aa0b0", font: { size: 11 }, stepSize: 4 },
           },
           x: {
             grid: { display: false },
-            ticks: {
-              color: "#9aa0b0",
-              maxRotation: 45,
-              font: { size: 11 },
+            ticks: { color: "#9aa0b0", maxRotation: 45, font: { size: 10 } },
+          },
+        },
+      },
+    });
+  },
+
+  // Graphique 2 : Comparaison Moi vs Classe par matiere (barres horizontales)
+  classChart: null,
+
+  renderClassChart() {
+    const canvas = document.getElementById("class-chart");
+    if (!canvas) return;
+
+    if (this.classChart) this.classChart.destroy();
+
+    const data = this.rawData;
+    if (!data || !data.periodes) { this.classChart = null; return; }
+
+    const periode = data.periodes.find((p) => p.codePeriode === this.currentSemester);
+    if (!periode || !periode.ensembleMatieres || !periode.ensembleMatieres.disciplines) {
+      this.classChart = null;
+      return;
+    }
+
+    const subjects = [];
+    const myAvgs = [];
+    const classAvgs = [];
+
+    for (const disc of periode.ensembleMatieres.disciplines) {
+      const myAvg = disc.moyenne || disc.moyenneEleve;
+      const clAvg = disc.moyenneClasse;
+      if (!myAvg || !clAvg) continue;
+
+      const myVal = parseFloat(String(myAvg).replace(",", "."));
+      const clVal = parseFloat(String(clAvg).replace(",", "."));
+      if (isNaN(myVal) || isNaN(clVal)) continue;
+
+      // Nom court pour les labels
+      let name = disc.discipline || disc.libelleMatiere || disc.codeMatiere || "";
+      if (name.length > 16) name = name.substring(0, 14) + "..";
+
+      subjects.push(name);
+      myAvgs.push(myVal);
+      classAvgs.push(clVal);
+    }
+
+    if (subjects.length === 0) { this.classChart = null; return; }
+
+    this.classChart = new Chart(canvas, {
+      type: "bar",
+      data: {
+        labels: subjects,
+        datasets: [
+          {
+            label: "Moi",
+            data: myAvgs,
+            backgroundColor: "rgba(79, 140, 255, 0.7)",
+            borderColor: "#4f8cff",
+            borderWidth: 1,
+            borderRadius: 4,
+            barPercentage: 0.7,
+            categoryPercentage: 0.8,
+          },
+          {
+            label: "Classe",
+            data: classAvgs,
+            backgroundColor: "rgba(139, 92, 246, 0.5)",
+            borderColor: "#8b5cf6",
+            borderWidth: 1,
+            borderRadius: 4,
+            barPercentage: 0.7,
+            categoryPercentage: 0.8,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        indexAxis: "y",
+        animation: { duration: 800, easing: "easeOutQuart" },
+        plugins: {
+          legend: {
+            display: true,
+            labels: { color: "#9aa0b0", usePointStyle: true, padding: 16, font: { size: 11 } },
+          },
+          tooltip: {
+            backgroundColor: "rgba(10, 14, 26, 0.95)",
+            titleColor: "#f0f2f5",
+            bodyColor: "#f0f2f5",
+            borderColor: "rgba(79, 140, 255, 0.2)",
+            borderWidth: 1,
+            padding: 12,
+            cornerRadius: 8,
+            callbacks: {
+              label(ctx) {
+                return `${ctx.dataset.label}: ${ctx.parsed.x}/20`;
+              },
             },
+          },
+        },
+        scales: {
+          x: {
+            beginAtZero: true,
+            max: 20,
+            grid: { color: "rgba(255,255,255,0.04)" },
+            ticks: { color: "#9aa0b0", font: { size: 11 }, stepSize: 4 },
+          },
+          y: {
+            grid: { display: false },
+            ticks: { color: "#9aa0b0", font: { size: 11 } },
           },
         },
       },

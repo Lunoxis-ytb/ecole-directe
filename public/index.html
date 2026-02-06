@@ -107,14 +107,26 @@
         <div id="grades-container" class="grades-container">
           <p class="loading">Chargement des notes...</p>
         </div>
-        <div class="chart-header">
-          <h3>Evolution des moyennes</h3>
-          <select id="chart-subject-select">
-            <option value="">Moyenne generale</option>
-          </select>
-        </div>
-        <div class="chart-wrapper">
-          <canvas id="grades-chart"></canvas>
+        <div class="charts-grid">
+          <div class="chart-section">
+            <div class="chart-header">
+              <h3>Mon evolution</h3>
+              <select id="chart-subject-select">
+                <option value="">Toutes matieres</option>
+              </select>
+            </div>
+            <div class="chart-wrapper">
+              <canvas id="grades-chart"></canvas>
+            </div>
+          </div>
+          <div class="chart-section">
+            <div class="chart-header">
+              <h3>Moi vs Classe</h3>
+            </div>
+            <div class="chart-wrapper">
+              <canvas id="class-chart"></canvas>
+            </div>
+          </div>
         </div>
       </section>
 
