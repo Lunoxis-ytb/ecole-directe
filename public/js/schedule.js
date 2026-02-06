@@ -40,21 +40,32 @@ const Schedule = {
     const dateDebut = this.formatDate(this.currentWeekStart);
     const dateFin = this.formatDate(weekEnd);
 
-    // Mettre à jour le label
+    // Mettre a jour le label
     const options = { day: "numeric", month: "short" };
     const startLabel = this.currentWeekStart.toLocaleDateString("fr-FR", options);
     const endLabel = weekEnd.toLocaleDateString("fr-FR", options);
     document.getElementById("week-label").textContent =
       `${startLabel} - ${endLabel} ${weekEnd.getFullYear()}`;
 
-    const result = await API.getSchedule(dateDebut, dateFin);
-    if (!result.success) {
-      container.innerHTML = `<p class="loading">Erreur : ${result.message}</p>`;
-      return;
+    // ── Cache-first : afficher le cache immediatement ──
+    const cached = await API.loadScheduleCache(dateDebut);
+    if (cached && cached.data) {
+      console.log("[SCHEDULE] Cache trouve pour semaine", dateDebut);
+      this.render(cached.data);
+      this.updateNextClass(cached.data);
     }
 
-    this.render(result.data);
-    this.updateNextClass(result.data);
+    // ── Puis fetch les donnees fraiches ──
+    const result = await API.getSchedule(dateDebut, dateFin);
+    if (result.success) {
+      this.render(result.data);
+      this.updateNextClass(result.data);
+
+      // Sauvegarder en cache (fire-and-forget)
+      API.saveScheduleCache(dateDebut, result.data);
+    } else if (!cached) {
+      container.innerHTML = `<p class="loading">Erreur : ${result.message}</p>`;
+    }
   },
 
   render(events) {
@@ -92,7 +103,18 @@ const Schedule = {
     html += "</div>";
     container.innerHTML = html;
 
-    // Placer les événements
+    // Attribuer une couleur par matiere
+    const subjectColors = {};
+    let colorIndex = 0;
+    for (const ev of events) {
+      const subj = ev.matiere || ev.text || "Cours";
+      if (!(subj in subjectColors)) {
+        subjectColors[subj] = colorIndex % 12;
+        colorIndex++;
+      }
+    }
+
+    // Placer les evenements
     for (const ev of events) {
       if (!ev.start_date && !ev.startDate) continue;
 
@@ -127,13 +149,12 @@ const Schedule = {
       const prof = ev.prof || ev.teacher || "";
 
       const isAnnule = ev.isAnnule || ev.isCancelled;
-      const bgColor = isAnnule ? "rgba(248,113,113,0.7)" : "";
+      const colorClass = `color-${subjectColors[subject] || 0}`;
 
       const eventEl = document.createElement("div");
-      eventEl.className = "schedule-event";
+      eventEl.className = `schedule-event ${colorClass}${isAnnule ? " cancelled" : ""}`;
       eventEl.style.top = `${topPx}px`;
       eventEl.style.height = `${heightPx}px`;
-      if (bgColor) eventEl.style.background = bgColor;
 
       eventEl.innerHTML = `
         <div class="event-subject">${subject}${isAnnule ? " (Annule)" : ""}</div>

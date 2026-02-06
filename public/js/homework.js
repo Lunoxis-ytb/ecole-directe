@@ -1,8 +1,9 @@
 // ══ MODULE DEVOIRS ══
 const Homework = {
   rawData: null,
+  doneStatus: {}, // { "hw_done_2025-01-15_Maths": true, ... }
 
-  // Clé localStorage pour l'état fait/pas fait
+  // Cle pour l'etat fait/pas fait
   getStorageKey(date, subject) {
     return `hw_done_${date}_${subject}`;
   },
@@ -11,20 +12,40 @@ const Homework = {
     const container = document.getElementById("homework-container");
     container.innerHTML = '<p class="loading">Chargement des devoirs...</p>';
 
-    const result = await API.getHomework();
-    if (!result.success) {
-      container.innerHTML = `<p class="loading">Erreur : ${result.message}</p>`;
-      return;
+    // ── Cache-first : afficher le cache immediatement ──
+    const cached = await API.loadHomeworkCache();
+    if (cached) {
+      if (cached.data && Object.keys(cached.data).length > 0) {
+        console.log("[HOMEWORK] Cache trouve, affichage immediat");
+        this.rawData = cached.data;
+        this.doneStatus = cached.done_status || {};
+        this.render();
+        this.updateStats();
+      }
     }
 
-    this.rawData = result.data;
-    this.render();
-    this.updateStats();
+    // ── Puis fetch les donnees fraiches ──
+    const result = await API.getHomework();
+    if (result.success) {
+      this.rawData = result.data;
+      this.render();
+      this.updateStats();
+
+      // Sauvegarder en cache (fire-and-forget)
+      API.saveHomeworkCache(result.data);
+    } else if (!cached) {
+      container.innerHTML = `<p class="loading">Erreur : ${result.message}</p>`;
+    }
   },
 
   render() {
     const container = document.getElementById("homework-container");
     const data = this.rawData;
+
+    console.log("[HOMEWORK] Data type:", typeof data, "Keys:", data ? Object.keys(data).length : 0);
+    if (data && typeof data === "object") {
+      console.log("[HOMEWORK] Premieres cles:", Object.keys(data).slice(0, 5));
+    }
 
     if (!data || typeof data !== "object" || Object.keys(data).length === 0) {
       container.innerHTML = '<p class="loading">Aucun devoir disponible</p>';
@@ -36,17 +57,17 @@ const Homework = {
       return new Date(a) - new Date(b);
     });
 
-    // Ne garder que les devoirs futurs ou récents (7 jours avant)
+    // Ne garder que les devoirs futurs ou recents (30 jours avant)
     const now = new Date();
-    const weekAgo = new Date(now);
-    weekAgo.setDate(weekAgo.getDate() - 7);
+    const monthAgo = new Date(now);
+    monthAgo.setDate(monthAgo.getDate() - 30);
 
     let html = "";
     let totalUndone = 0;
 
     for (const dateStr of dates) {
       const date = new Date(dateStr);
-      if (date < weekAgo) continue;
+      if (date < monthAgo) continue;
 
       const items = data[dateStr];
       if (!items || items.length === 0) continue;
@@ -66,11 +87,11 @@ const Homework = {
       for (const item of items) {
         const subject = item.matiere || "Inconnu";
         const storageKey = this.getStorageKey(dateStr, subject);
-        const isDone = localStorage.getItem(storageKey) === "true";
+        const isDone = !!this.doneStatus[storageKey];
 
         if (!isDone && !isPast) totalUndone++;
 
-        // Décoder le contenu base64
+        // Decoder le contenu base64
         let content = "";
         if (item.aFaire && item.aFaire.contenu) {
           try {
@@ -121,9 +142,18 @@ const Homework = {
         const key = item.dataset.key;
         const done = e.target.checked;
 
-        localStorage.setItem(key, done.toString());
+        // Mettre a jour en memoire
+        if (done) {
+          this.doneStatus[key] = true;
+        } else {
+          delete this.doneStatus[key];
+        }
+
         item.classList.toggle("done", done);
         this.updateStats();
+
+        // Sauvegarder en SQLite (fire-and-forget)
+        API.saveHomeworkDone(this.doneStatus);
       });
     });
   },
@@ -142,7 +172,7 @@ const Homework = {
       for (const item of items) {
         const subject = item.matiere || "Inconnu";
         const key = this.getStorageKey(dateStr, subject);
-        if (localStorage.getItem(key) !== "true") {
+        if (!this.doneStatus[key]) {
           count++;
         }
       }

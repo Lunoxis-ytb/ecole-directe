@@ -130,6 +130,124 @@ const API = {
     return { success: false, message: data.message };
   },
 
+  // ══ PERSISTANCE (SQLite via serveur) ══
+
+  async saveSession(userId, token, prenom, nom, accountData) {
+    try {
+      await fetch("/api/session/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, token, prenom, nom, accountData }),
+      });
+    } catch (err) {
+      console.warn("[API] saveSession erreur (non bloquant):", err.message);
+    }
+  },
+
+  async loadSession() {
+    try {
+      const res = await fetch("/api/session/load");
+      const data = await res.json();
+      return data.session || null;
+    } catch (err) {
+      console.warn("[API] loadSession erreur:", err.message);
+      return null;
+    }
+  },
+
+  async deleteSession(userId) {
+    try {
+      await fetch("/api/session", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId }),
+      });
+    } catch (err) {
+      console.warn("[API] deleteSession erreur (non bloquant):", err.message);
+    }
+  },
+
+  async saveGradesCache(data) {
+    try {
+      await fetch("/api/cache/grades", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: this.userId, data }),
+      });
+    } catch (err) {
+      console.warn("[API] saveGradesCache erreur (non bloquant):", err.message);
+    }
+  },
+
+  async loadGradesCache() {
+    try {
+      const res = await fetch(`/api/cache/grades/${this.userId}`);
+      const result = await res.json();
+      return result.cached || null;
+    } catch (err) {
+      console.warn("[API] loadGradesCache erreur:", err.message);
+      return null;
+    }
+  },
+
+  async saveHomeworkCache(data) {
+    try {
+      await fetch("/api/cache/homework", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: this.userId, data }),
+      });
+    } catch (err) {
+      console.warn("[API] saveHomeworkCache erreur (non bloquant):", err.message);
+    }
+  },
+
+  async loadHomeworkCache() {
+    try {
+      const res = await fetch(`/api/cache/homework/${this.userId}`);
+      const result = await res.json();
+      return result.cached || null;
+    } catch (err) {
+      console.warn("[API] loadHomeworkCache erreur:", err.message);
+      return null;
+    }
+  },
+
+  async saveHomeworkDone(doneStatus) {
+    try {
+      await fetch("/api/cache/homework/done", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: this.userId, doneStatus }),
+      });
+    } catch (err) {
+      console.warn("[API] saveHomeworkDone erreur (non bloquant):", err.message);
+    }
+  },
+
+  async saveScheduleCache(weekStart, data) {
+    try {
+      await fetch("/api/cache/schedule", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: this.userId, weekStart, data }),
+      });
+    } catch (err) {
+      console.warn("[API] saveScheduleCache erreur (non bloquant):", err.message);
+    }
+  },
+
+  async loadScheduleCache(weekStart) {
+    try {
+      const res = await fetch(`/api/cache/schedule/${this.userId}/${weekStart}`);
+      const result = await res.json();
+      return result.cached || null;
+    } catch (err) {
+      console.warn("[API] loadScheduleCache erreur:", err.message);
+      return null;
+    }
+  },
+
   // Recupere l'emploi du temps
   async getSchedule(dateDebut, dateFin) {
     console.log("[API] getSchedule userId:", this.userId);

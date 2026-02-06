@@ -1,5 +1,5 @@
 // ══ APP — Orchestrateur principal ══
-(function () {
+(async function () {
   const loginPage = document.getElementById("login-page");
   const doubleAuthPage = document.getElementById("doubleauth-page");
   const dashboardPage = document.getElementById("dashboard-page");
@@ -26,15 +26,19 @@
     }
   }
 
-  // ── Session (sessionStorage) ──
-  function saveSession(token, userId, prenom, nom) {
+  // ── Session persistante (SQLite via API) ──
+  async function saveSession(token, userId, prenom, nom, accountData) {
+    // Sauvegarder localement en sessionStorage (fallback rapide)
     sessionStorage.setItem("ed_token", token);
     sessionStorage.setItem("ed_userId", userId);
     sessionStorage.setItem("ed_prenom", prenom);
     sessionStorage.setItem("ed_nom", nom);
+    // Sauvegarder en SQLite (persistant entre sessions navigateur)
+    API.saveSession(userId, token, prenom, nom, accountData);
   }
 
-  function loadSession() {
+  async function loadSession() {
+    // D'abord essayer sessionStorage (rapide, meme onglet)
     const token = sessionStorage.getItem("ed_token");
     const userId = sessionStorage.getItem("ed_userId");
     const prenom = sessionStorage.getItem("ed_prenom");
@@ -42,14 +46,33 @@
     if (token && userId) {
       return { token, userId, prenom, nom };
     }
+
+    // Sinon essayer SQLite (persistant entre fermetures navigateur)
+    const dbSession = await API.loadSession();
+    if (dbSession) {
+      // Restaurer en sessionStorage pour les acces suivants
+      sessionStorage.setItem("ed_token", dbSession.token);
+      sessionStorage.setItem("ed_userId", dbSession.user_id);
+      sessionStorage.setItem("ed_prenom", dbSession.prenom);
+      sessionStorage.setItem("ed_nom", dbSession.nom);
+      return {
+        token: dbSession.token,
+        userId: dbSession.user_id,
+        prenom: dbSession.prenom,
+        nom: dbSession.nom,
+      };
+    }
+
     return null;
   }
 
-  function clearSession() {
+  async function clearSession() {
     sessionStorage.removeItem("ed_token");
     sessionStorage.removeItem("ed_userId");
     sessionStorage.removeItem("ed_prenom");
     sessionStorage.removeItem("ed_nom");
+    // Supprimer de SQLite aussi
+    API.deleteSession(API.userId);
   }
 
   // ── Navigation pages ──
@@ -156,8 +179,12 @@
 
   // ── Charger le dashboard ──
   async function loadDashboard() {
+    // Charger notes en premier (bloquant pour l'affichage)
     await Grades.load();
+    // Charger devoirs + emploi du temps en parallele pour les stats
     Schedule.init();
+    Schedule.load();
+    Homework.load();
   }
 
   // ── Toggle mot de passe ──
@@ -188,7 +215,7 @@
       console.log("[LOGIN] Resultat:", result);
 
       if (result.success) {
-        saveSession(result.token, API.userId, result.prenom, result.nom);
+        saveSession(result.token, API.userId, result.prenom, result.nom, result.account);
         showDashboard(result.prenom, result.nom);
         loadDashboard();
       } else if (result.needDoubleAuth) {
@@ -226,7 +253,7 @@
       console.log("[DA] Resultat:", result);
 
       if (result.success) {
-        saveSession(result.token, API.userId, result.prenom, result.nom);
+        saveSession(result.token, API.userId, result.prenom, result.nom, result.account);
         showDashboard(result.prenom, result.nom);
         loadDashboard();
       } else {
@@ -259,7 +286,8 @@
   initTabs();
   initTrimesterSelect();
 
-  const session = loadSession();
+  // Chargement session async (sessionStorage + fallback SQLite)
+  const session = await loadSession();
   if (session) {
     API.token = session.token;
     API.userId = session.userId;
