@@ -2,6 +2,7 @@ const express = require("express");
 const fetch = require("node-fetch");
 const https = require("https");
 const path = require("path");
+const crypto = require("crypto");
 const db = require("./db");
 
 // Agent HTTPS qui accepte les certificats incomplets (usage local uniquement)
@@ -17,8 +18,49 @@ const UA =
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ══ PROTECTION PAR MOT DE PASSE ══
+// ══ PROTECTION PAR MOT DE PASSE (SECURISEE) ══
 const APP_PASSWORD = process.env.APP_PASSWORD;
+
+// Tokens de session valides (token → timestamp de creation)
+const validAuthTokens = new Map();
+
+// Rate limiting : IP → { attempts, blockedUntil }
+const loginAttempts = new Map();
+const MAX_ATTEMPTS = 5;
+const BLOCK_DURATION = 15 * 60 * 1000; // 15 minutes
+
+function checkRateLimit(ip) {
+  const record = loginAttempts.get(ip);
+  if (!record) return true;
+  if (record.blockedUntil && Date.now() < record.blockedUntil) return false;
+  if (record.blockedUntil && Date.now() >= record.blockedUntil) {
+    loginAttempts.delete(ip);
+    return true;
+  }
+  return record.attempts < MAX_ATTEMPTS;
+}
+
+function recordFailedAttempt(ip) {
+  const record = loginAttempts.get(ip) || { attempts: 0 };
+  record.attempts++;
+  if (record.attempts >= MAX_ATTEMPTS) {
+    record.blockedUntil = Date.now() + BLOCK_DURATION;
+  }
+  loginAttempts.set(ip, record);
+}
+
+function clearAttempts(ip) {
+  loginAttempts.delete(ip);
+}
+
+// Nettoyer les tokens expires toutes les heures (max age 30 jours)
+setInterval(() => {
+  const maxAge = 30 * 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  for (const [token, created] of validAuthTokens) {
+    if (now - created > maxAge) validAuthTokens.delete(token);
+  }
+}, 60 * 60 * 1000);
 
 // Page de mot de passe
 const PASSWORD_PAGE = `<!DOCTYPE html>
@@ -39,26 +81,45 @@ const PASSWORD_PAGE = `<!DOCTYPE html>
     font-size:15px;font-weight:600;cursor:pointer}
   button:hover{background:#3d7ae8}
   .error{color:#f87171;font-size:13px;margin-bottom:12px;display:none}
+  .blocked{color:#f87171;font-size:13px;margin-bottom:12px;display:none}
 </style></head><body>
 <div class="box">
   <h2>EcoleDirecte Dashboard</h2>
   <p>Entrez le mot de passe pour acceder</p>
   <form method="POST" action="/auth">
     <div class="error" id="err">Mot de passe incorrect</div>
+    <div class="blocked" id="blocked">Trop de tentatives. Reessayez dans 15 minutes.</div>
     <input type="password" name="password" placeholder="Mot de passe" autofocus required>
     <button type="submit">Acceder</button>
   </form>
 </div>
-<script>if(location.search.includes('wrong'))document.getElementById('err').style.display='block'</script>
+<script>
+if(location.search.includes('wrong'))document.getElementById('err').style.display='block';
+if(location.search.includes('blocked'))document.getElementById('blocked').style.display='block';
+</script>
 </body></html>`;
 
 // Endpoint d'authentification
 app.post("/auth", (req, res) => {
+  const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
+
+  if (!checkRateLimit(ip)) {
+    return res.redirect("/gate?blocked=1");
+  }
+
   if (req.body.password === APP_PASSWORD) {
-    // Cookie d'auth valide 30 jours
-    res.cookie("app_auth", APP_PASSWORD, { maxAge: 30 * 24 * 60 * 60 * 1000, httpOnly: true });
+    clearAttempts(ip);
+    // Generer un token aleatoire au lieu de stocker le mot de passe
+    const sessionToken = crypto.randomBytes(32).toString("hex");
+    validAuthTokens.set(sessionToken, Date.now());
+    res.cookie("app_auth", sessionToken, {
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+      httpOnly: true,
+      sameSite: "strict",
+    });
     res.redirect("/");
   } else {
+    recordFailedAttempt(ip);
     res.redirect("/gate?wrong=1");
   }
 });
@@ -70,19 +131,17 @@ app.get("/gate", (req, res) => {
 // Middleware : bloquer si pas authentifie (seulement si APP_PASSWORD est defini)
 if (APP_PASSWORD) {
   app.use((req, res, next) => {
-    // Laisser passer /auth et /gate
     if (req.path === "/auth" || req.path === "/gate") return next();
 
-    // Verifier le cookie
+    // Extraire et verifier le token du cookie
     const cookies = req.headers.cookie || "";
     const authCookie = cookies.split(";").map(c => c.trim()).find(c => c.startsWith("app_auth="));
     const cookieValue = authCookie ? authCookie.split("=").slice(1).join("=") : "";
 
-    if (cookieValue === APP_PASSWORD) {
+    if (cookieValue && validAuthTokens.has(cookieValue)) {
       return next();
     }
 
-    // Non authentifie → rediriger vers la page de mot de passe
     if (req.path.startsWith("/api/")) {
       return res.status(401).json({ error: "Non authentifie" });
     }
