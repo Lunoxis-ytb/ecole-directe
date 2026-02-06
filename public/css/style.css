@@ -40,7 +40,7 @@ body {
   overflow-x: hidden;
 }
 
-/* ══ ANIMATED BACKGROUND ══ */
+/* ══ STATIC BACKGROUND ══ */
 body::before {
   content: '';
   position: fixed;
@@ -49,33 +49,11 @@ body::before {
   width: 100%;
   height: 100%;
   background:
-    radial-gradient(ellipse at 20% 20%, rgba(108, 140, 255, 0.15) 0%, transparent 50%),
-    radial-gradient(ellipse at 80% 80%, rgba(139, 92, 246, 0.12) 0%, transparent 50%),
-    radial-gradient(ellipse at 50% 50%, rgba(52, 211, 153, 0.06) 0%, transparent 60%);
+    radial-gradient(ellipse at 20% 20%, rgba(108, 140, 255, 0.12) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 80%, rgba(139, 92, 246, 0.08) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 50%, rgba(52, 211, 153, 0.05) 0%, transparent 60%);
   z-index: 0;
   pointer-events: none;
-  animation: bgShift 20s ease-in-out infinite alternate;
-}
-
-@keyframes bgShift {
-  0% {
-    background:
-      radial-gradient(ellipse at 20% 20%, rgba(108, 140, 255, 0.15) 0%, transparent 50%),
-      radial-gradient(ellipse at 80% 80%, rgba(139, 92, 246, 0.12) 0%, transparent 50%),
-      radial-gradient(ellipse at 50% 50%, rgba(52, 211, 153, 0.06) 0%, transparent 60%);
-  }
-  50% {
-    background:
-      radial-gradient(ellipse at 60% 30%, rgba(139, 92, 246, 0.15) 0%, transparent 50%),
-      radial-gradient(ellipse at 30% 70%, rgba(108, 140, 255, 0.12) 0%, transparent 50%),
-      radial-gradient(ellipse at 80% 50%, rgba(52, 211, 153, 0.08) 0%, transparent 60%);
-  }
-  100% {
-    background:
-      radial-gradient(ellipse at 40% 80%, rgba(108, 140, 255, 0.12) 0%, transparent 50%),
-      radial-gradient(ellipse at 70% 20%, rgba(52, 211, 153, 0.1) 0%, transparent 50%),
-      radial-gradient(ellipse at 20% 50%, rgba(139, 92, 246, 0.15) 0%, transparent 60%);
-  }
 }
 
 .page { display: none; position: relative; z-index: 1; }
@@ -395,7 +373,7 @@ body::before {
 /* ══ STATS BAR ══ */
 .stats-bar {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 16px;
   padding: 24px 32px;
   animation: fadeInUp 0.5s ease-out 0.1s both;
@@ -889,11 +867,23 @@ body::before {
   background: rgba(255, 255, 255, 0.18);
 }
 
+/* ══ GRADES TABLE - scrollable wrapper ══ */
+.grades-container {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.rank-cell {
+  color: var(--accent);
+  font-weight: 600;
+}
+
 /* ══ RESPONSIVE ══ */
 @media (max-width: 900px) {
   .stats-bar {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(3, 1fr);
     padding: 16px;
+    gap: 10px;
   }
   .tab-content { padding: 16px; }
   .dashboard-header { padding: 16px; }
@@ -901,23 +891,172 @@ body::before {
 }
 
 @media (max-width: 600px) {
+  /* Header mobile */
+  .dashboard-header {
+    flex-direction: column;
+    gap: 12px;
+    align-items: flex-start;
+    padding: 14px 16px;
+  }
+
+  .header-left {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .dashboard-header h1 {
+    font-size: 18px;
+  }
+
+  .btn-logout {
+    align-self: flex-end;
+    margin-top: -32px;
+  }
+
+  /* Stats mobile */
   .stats-bar {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, 1fr);
+    padding: 12px;
+    gap: 8px;
   }
-  .login-container {
-    padding: 36px 24px;
-    border-radius: 20px;
+
+  .stat-card {
+    padding: 14px;
+    gap: 6px;
   }
+
+  .stat-value {
+    font-size: 20px;
+  }
+
+  .stat-label {
+    font-size: 10px;
+  }
+
+  /* Tabs mobile */
+  .tabs {
+    padding: 0 8px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .tab {
+    padding: 12px 16px;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+
+  /* Content mobile */
+  .tab-content {
+    padding: 12px;
+  }
+
   .panel-header {
     flex-direction: column;
     gap: 12px;
     align-items: flex-start;
   }
+
+  .panel-header h2 {
+    font-size: 17px;
+  }
+
+  /* Grades table mobile */
+  .grades-table {
+    font-size: 13px;
+    min-width: 500px;
+  }
+
+  .grades-table th,
+  .grades-table td {
+    padding: 10px 10px;
+  }
+
+  .grade-detail td {
+    padding: 8px 10px 8px 20px;
+  }
+
+  /* Chart mobile */
+  .chart-wrapper {
+    padding: 14px;
+    max-height: 280px;
+  }
+
+  .chart-header {
+    flex-direction: column;
+    gap: 10px;
+    align-items: flex-start;
+  }
+
+  /* Login mobile */
+  .login-container {
+    padding: 32px 20px;
+    border-radius: 20px;
+  }
+
+  .login-container h1 {
+    font-size: 26px;
+  }
+
+  /* Homework mobile */
+  .homework-item {
+    padding: 14px;
+    gap: 10px;
+  }
+
+  .homework-subject {
+    font-size: 13px;
+  }
+
+  .homework-content {
+    font-size: 12px;
+  }
+
+  /* Schedule mobile */
   .week-nav {
     flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
   }
+
+  .btn-nav {
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+
+  #week-label {
+    font-size: 13px;
+    min-width: auto;
+    width: 100%;
+  }
+
+  .schedule-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
   .schedule-grid {
     font-size: 10px;
-    grid-template-columns: 50px repeat(5, 1fr);
+    grid-template-columns: 45px repeat(5, minmax(80px, 1fr));
+    min-width: 450px;
+  }
+
+  .schedule-header {
+    padding: 10px 4px;
+    font-size: 11px;
+  }
+
+  .schedule-event .event-subject {
+    font-size: 10px;
+  }
+
+  .schedule-event .event-room {
+    font-size: 9px;
   }
 }

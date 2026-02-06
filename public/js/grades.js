@@ -78,6 +78,27 @@ const Grades = {
       subjects[key].notes.push(note);
     }
 
+    // Recuperer les rangs par matiere depuis les periodes
+    const ranksMap = {};
+    let generalRank = "--";
+    if (data.periodes && semesterFilter) {
+      const periode = data.periodes.find((p) => p.codePeriode === semesterFilter);
+      if (periode && periode.ensembleMatieres && periode.ensembleMatieres.disciplines) {
+        for (const disc of periode.ensembleMatieres.disciplines) {
+          const rank = disc.rang || disc.rangEleve || disc.classement;
+          if (rank) {
+            ranksMap[disc.codeMatiere] = rank;
+          }
+        }
+      }
+      // Rang general
+      if (periode) {
+        generalRank = periode.rangEleve || periode.rang
+          || (periode.ensembleMatieres && (periode.ensembleMatieres.rangEleve || periode.ensembleMatieres.rang))
+          || "--";
+      }
+    }
+
     // Calculer les moyennes par matiere
     const subjectList = Object.values(subjects).map((s) => {
       const validNotes = s.notes.filter(
@@ -88,16 +109,24 @@ const Grades = {
         0
       );
       s.avg = validNotes.length > 0 ? (sum / validNotes.length).toFixed(2) : "--";
+      // Chercher le rang par code matiere
+      const codeMatiere = s.notes[0] ? s.notes[0].codeMatiere : null;
+      s.rank = codeMatiere && ranksMap[codeMatiere] ? ranksMap[codeMatiere] : "--";
       return s;
     });
 
     subjectList.sort((a, b) => a.name.localeCompare(b.name));
+
+    // Mettre a jour le rang general dans les stats
+    const rankEl = document.getElementById("stat-rank");
+    if (rankEl) rankEl.textContent = generalRank;
 
     let html = `<table class="grades-table">
       <thead>
         <tr>
           <th>Matiere</th>
           <th>Moyenne</th>
+          <th>Rang</th>
           <th>Nb notes</th>
           <th>Min</th>
           <th>Max</th>
@@ -120,6 +149,7 @@ const Grades = {
       html += `<tr class="subject-row" data-subject="${s.name}">
         <td>${s.name}</td>
         <td class="${avgClass}">${s.avg}</td>
+        <td class="rank-cell">${s.rank}</td>
         <td>${s.notes.length}</td>
         <td>${min}</td>
         <td>${max}</td>
@@ -131,7 +161,7 @@ const Grades = {
           <td>${n.devoir || ""}</td>
           <td>${n.valeur}/${n.noteSur}</td>
           <td>${dateStr}</td>
-          <td colspan="2">${n.commentaire || ""}</td>
+          <td colspan="3">${n.commentaire || ""}</td>
         </tr>`;
       }
     }
