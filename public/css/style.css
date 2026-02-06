@@ -503,8 +503,7 @@ body::before {
 
 .panel-header select {
   padding: 8px 14px;
-  background: var(--bg-glass-strong);
-  backdrop-filter: blur(10px);
+  background-color: #141825;
   border: 1px solid var(--border-glass);
   border-radius: var(--radius-sm);
   color: var(--text-primary);
@@ -518,6 +517,12 @@ body::before {
 .panel-header select:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+/* Style pour les options des selects (dropdown) */
+select option {
+  background-color: #141825;
+  color: #f0f2f5;
 }
 
 .loading {
@@ -628,8 +633,7 @@ body::before {
 
 .chart-header select {
   padding: 8px 14px;
-  background: var(--bg-glass-strong);
-  backdrop-filter: blur(10px);
+  background-color: #141825;
   border: 1px solid var(--border-glass);
   border-radius: var(--radius-sm);
   color: var(--text-primary);
