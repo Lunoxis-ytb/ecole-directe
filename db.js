@@ -11,26 +11,27 @@ const supabase = createClient(
 console.log("[DB] Supabase connecte a:", process.env.SUPABASE_URL);
 
 module.exports = {
-  // ── Sessions ──
-  async saveSession(userId, token, prenom, nom, accountData) {
+  // ── Sessions (isolees par device_id) ──
+  async saveSession(deviceId, userId, token, prenom, nom, accountData) {
     const { error } = await supabase
       .from("sessions")
       .upsert({
+        device_id: deviceId,
         user_id: userId,
         token,
         prenom,
         nom,
         account_data: accountData || null,
         updated_at: new Date().toISOString(),
-      }, { onConflict: "user_id" });
+      }, { onConflict: "device_id" });
     if (error) console.error("[DB] saveSession error:", error.message);
   },
 
-  async loadSession() {
+  async loadSession(deviceId) {
     const { data, error } = await supabase
       .from("sessions")
       .select("*")
-      .limit(1)
+      .eq("device_id", deviceId)
       .single();
     if (error && error.code !== "PGRST116") {
       console.error("[DB] loadSession error:", error.message);
@@ -45,19 +46,13 @@ module.exports = {
     };
   },
 
-  async deleteSession(userId) {
-    if (userId) {
+  async deleteSession(deviceId) {
+    if (deviceId) {
       const { error } = await supabase
         .from("sessions")
         .delete()
-        .eq("user_id", userId);
+        .eq("device_id", deviceId);
       if (error) console.error("[DB] deleteSession error:", error.message);
-    } else {
-      const { error } = await supabase
-        .from("sessions")
-        .delete()
-        .neq("user_id", "");
-      if (error) console.error("[DB] deleteAllSessions error:", error.message);
     }
   },
 

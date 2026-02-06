@@ -84,7 +84,7 @@ const PASSWORD_PAGE = `<!DOCTYPE html>
   .blocked{color:#f87171;font-size:13px;margin-bottom:12px;display:none}
 </style></head><body>
 <div class="box">
-  <h2>EcoleDirecte Dashboard</h2>
+  <h2>EDMM</h2>
   <p>Entrez le mot de passe pour acceder</p>
   <form method="POST" action="/auth">
     <div class="error" id="err">Mot de passe incorrect</div>
@@ -520,9 +520,10 @@ app.post("/api/schedule/:id", async (req, res) => {
 // ── Session ──
 app.post("/api/session/save", async (req, res) => {
   try {
-    const { userId, token, prenom, nom, accountData } = req.body;
-    await db.saveSession(String(userId), token, prenom, nom, accountData);
-    console.log("[SESSION] Sauvegardee pour userId:", userId);
+    const { deviceId, userId, token, prenom, nom, accountData } = req.body;
+    if (!deviceId) return res.status(400).json({ error: "deviceId requis" });
+    await db.saveSession(deviceId, String(userId), token, prenom, nom, accountData);
+    console.log("[SESSION] Sauvegardee pour device:", deviceId, "userId:", userId);
     res.json({ success: true });
   } catch (err) {
     console.error("[SESSION] Erreur save:", err.message);
@@ -530,10 +531,10 @@ app.post("/api/session/save", async (req, res) => {
   }
 });
 
-app.get("/api/session/load", async (req, res) => {
+app.get("/api/session/load/:deviceId", async (req, res) => {
   try {
-    const session = await db.loadSession();
-    console.log("[SESSION] Chargee:", session ? session.user_id : "aucune");
+    const session = await db.loadSession(req.params.deviceId);
+    console.log("[SESSION] Chargee pour device:", req.params.deviceId, session ? session.user_id : "aucune");
     res.json({ success: true, session });
   } catch (err) {
     console.error("[SESSION] Erreur load:", err.message);
@@ -543,9 +544,9 @@ app.get("/api/session/load", async (req, res) => {
 
 app.delete("/api/session", async (req, res) => {
   try {
-    const { userId } = req.body || {};
-    await db.deleteSession(userId);
-    console.log("[SESSION] Supprimee pour userId:", userId || "toutes");
+    const { deviceId } = req.body || {};
+    await db.deleteSession(deviceId);
+    console.log("[SESSION] Supprimee pour device:", deviceId);
     res.json({ success: true });
   } catch (err) {
     console.error("[SESSION] Erreur delete:", err.message);

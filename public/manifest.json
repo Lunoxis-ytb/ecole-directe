@@ -1,7 +1,7 @@
 {
-  "name": "EcoleDirecte Dashboard",
-  "short_name": "EcoleDirecte",
-  "description": "Dashboard EcoleDirecte - Notes, devoirs, emploi du temps",
+  "name": "EDMM - Ecole Direct Mais Mieux",
+  "short_name": "EDMM",
+  "description": "EDMM - Notes, devoirs, emploi du temps",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0a0e1a",

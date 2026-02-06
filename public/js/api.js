@@ -3,6 +3,16 @@ const API = {
   token: null,
   userId: null,
 
+  // Device ID unique par navigateur (isole les sessions entre appareils)
+  getDeviceId() {
+    let id = localStorage.getItem("edmm_device_id");
+    if (!id) {
+      id = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now().toString(36);
+      localStorage.setItem("edmm_device_id", id);
+    }
+    return id;
+  },
+
   // Extraire les infos du compte (parent ou eleve)
   _processLoginSuccess(data) {
     this.token = data.token;
@@ -137,7 +147,7 @@ const API = {
       await fetch("/api/session/save", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, token, prenom, nom, accountData }),
+        body: JSON.stringify({ deviceId: this.getDeviceId(), userId, token, prenom, nom, accountData }),
       });
     } catch (err) {
       console.warn("[API] saveSession erreur (non bloquant):", err.message);
@@ -146,7 +156,7 @@ const API = {
 
   async loadSession() {
     try {
-      const res = await fetch("/api/session/load");
+      const res = await fetch(`/api/session/load/${this.getDeviceId()}`);
       const data = await res.json();
       return data.session || null;
     } catch (err) {
@@ -155,12 +165,12 @@ const API = {
     }
   },
 
-  async deleteSession(userId) {
+  async deleteSession() {
     try {
       await fetch("/api/session", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId }),
+        body: JSON.stringify({ deviceId: this.getDeviceId() }),
       });
     } catch (err) {
       console.warn("[API] deleteSession erreur (non bloquant):", err.message);

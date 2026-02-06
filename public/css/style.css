@@ -38,6 +38,21 @@ body {
   color: var(--text-primary);
   min-height: 100vh;
   overflow-x: hidden;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Desactiver le delai 300ms sur mobile */
+a, button, input, select, .tab, .subject-row, .homework-check, .btn-nav, .da-option {
+  touch-action: manipulation;
+}
+
+/* Animations reduites si l'utilisateur le demande */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 /* ══ STATIC BACKGROUND ══ */
@@ -973,6 +988,7 @@ select option {
   /* Content mobile */
   .tab-content {
     padding: 12px;
+    -webkit-overflow-scrolling: touch;
   }
 
   .panel-header {

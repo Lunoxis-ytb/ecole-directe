@@ -71,8 +71,8 @@
     sessionStorage.removeItem("ed_userId");
     sessionStorage.removeItem("ed_prenom");
     sessionStorage.removeItem("ed_nom");
-    // Supprimer de SQLite aussi
-    API.deleteSession(API.userId);
+    // Supprimer de Supabase aussi
+    API.deleteSession();
   }
 
   // ── Navigation pages ──
