@@ -1,4 +1,4 @@
-const CACHE_NAME = "edmm-v2";
+const CACHE_NAME = "edmm-v4";
 const STATIC_ASSETS = [
   "/",
   "/css/style.css",
@@ -7,6 +7,7 @@ const STATIC_ASSETS = [
   "/js/grades.js",
   "/js/homework.js",
   "/js/schedule.js",
+  "/js/viescolaire.js",
   "/icons/icon-192.png",
   "/icons/icon-512.png",
 ];
@@ -31,25 +32,65 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
-// Fetch : network-first pour les API, cache-first pour le reste
+// Fetch avec timeout pour les API
+function fetchWithTimeout(request, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("Timeout")), timeoutMs);
+    fetch(request).then((res) => {
+      clearTimeout(timer);
+      resolve(res);
+    }).catch((err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
+  });
+}
+
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
-
-  // Les requetes API passent toujours par le reseau
-  if (url.pathname.startsWith("/api/")) {
-    event.respondWith(
-      fetch(event.request).catch(() =>
-        new Response(JSON.stringify({ error: "Hors ligne" }), {
-          headers: { "Content-Type": "application/json" },
-        })
-      )
-    );
-    return;
-  }
 
   // Auth et gate : toujours reseau
   if (url.pathname === "/auth" || url.pathname === "/gate") {
     event.respondWith(fetch(event.request));
+    return;
+  }
+
+  // Les requetes API : network-first avec timeout 5s + fallback cache
+  if (url.pathname.startsWith("/api/")) {
+    event.respondWith(
+      fetchWithTimeout(event.request.clone(), 5000)
+        .then((response) => {
+          // Cache les reponses API reussies pour le fallback offline
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          }
+          return response;
+        })
+        .catch(() =>
+          caches.match(event.request).then((cached) =>
+            cached || new Response(JSON.stringify({ error: "Hors ligne" }), {
+              headers: { "Content-Type": "application/json" },
+            })
+          )
+        )
+    );
+    return;
+  }
+
+  // Navigation : network-first avec fallback cache pour offline
+  if (event.request.mode === "navigate") {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          }
+          return response;
+        })
+        .catch(() => caches.match(event.request).then((cached) => cached || caches.match("/")))
+    );
     return;
   }
 
@@ -58,7 +99,6 @@ self.addEventListener("fetch", (event) => {
     caches.match(event.request).then((cached) => {
       const networkFetch = fetch(event.request)
         .then((response) => {
-          // Mettre a jour le cache avec la version fraiche
           if (response.ok) {
             const clone = response.clone();
             caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));

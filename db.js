@@ -11,19 +11,19 @@ const supabase = createClient(
 console.log("[DB] Supabase connecte a:", process.env.SUPABASE_URL);
 
 module.exports = {
-  // ── Sessions (isolees par device_id) ──
+  // ── Sessions (utilise id UUID = deviceId du navigateur) ──
   async saveSession(deviceId, userId, token, prenom, nom, accountData) {
     const { error } = await supabase
       .from("sessions")
       .upsert({
-        device_id: deviceId,
+        id: deviceId,
         user_id: userId,
         token,
         prenom,
         nom,
         account_data: accountData || null,
         updated_at: new Date().toISOString(),
-      }, { onConflict: "device_id" });
+      }, { onConflict: "id" });
     if (error) console.error("[DB] saveSession error:", error.message);
   },
 
@@ -31,7 +31,7 @@ module.exports = {
     const { data, error } = await supabase
       .from("sessions")
       .select("*")
-      .eq("device_id", deviceId)
+      .eq("id", deviceId)
       .single();
     if (error && error.code !== "PGRST116") {
       console.error("[DB] loadSession error:", error.message);
@@ -51,7 +51,7 @@ module.exports = {
       const { error } = await supabase
         .from("sessions")
         .delete()
-        .eq("device_id", deviceId);
+        .eq("id", deviceId);
       if (error) console.error("[DB] deleteSession error:", error.message);
     }
   },
@@ -111,14 +111,14 @@ module.exports = {
   },
 
   async saveHomeworkDone(userId, doneStatus) {
+    // Mettre a jour SEULEMENT le done_status sans ecraser les donnees devoirs
     const { error } = await supabase
       .from("homework_cache")
-      .upsert({
-        user_id: userId,
-        data: {},
+      .update({
         done_status: doneStatus,
         updated_at: new Date().toISOString(),
-      }, { onConflict: "user_id" });
+      })
+      .eq("user_id", userId);
     if (error) console.error("[DB] saveHomeworkDone error:", error.message);
   },
 
@@ -147,5 +147,38 @@ module.exports = {
     }
     if (!data) return null;
     return { data: data.data, updated_at: data.updated_at };
+  },
+
+  // ── Vie Scolaire cache ──
+  // Note: la table viescolaire_cache doit etre creee dans Supabase :
+  // CREATE TABLE viescolaire_cache (id uuid DEFAULT gen_random_uuid() PRIMARY KEY, user_id text UNIQUE NOT NULL, data jsonb, updated_at timestamptz);
+  async saveVieScolaireCache(userId, data) {
+    try {
+      const { error } = await supabase
+        .from("viescolaire_cache")
+        .upsert({
+          user_id: userId,
+          data,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "user_id" });
+      if (error) console.warn("[DB] saveVieScolaireCache skipped (table may not exist):", error.message);
+    } catch (err) {
+      console.warn("[DB] saveVieScolaireCache skipped:", err.message);
+    }
+  },
+
+  async loadVieScolaireCache(userId) {
+    try {
+      const { data, error } = await supabase
+        .from("viescolaire_cache")
+        .select("*")
+        .eq("user_id", userId)
+        .single();
+      if (error) return null;
+      if (!data) return null;
+      return { data: data.data, updated_at: data.updated_at };
+    } catch (err) {
+      return null;
+    }
   },
 };

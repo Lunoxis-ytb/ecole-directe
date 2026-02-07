@@ -133,6 +133,11 @@ if (APP_PASSWORD) {
   app.use((req, res, next) => {
     if (req.path === "/auth" || req.path === "/gate") return next();
 
+    // Laisser passer les fichiers statiques (CSS, JS, images, manifest, SW)
+    const ext = path.extname(req.path);
+    if (ext && ext !== ".html") return next();
+    if (req.path === "/sw.js" || req.path === "/manifest.json") return next();
+
     // Extraire et verifier le token du cookie
     const cookies = req.headers.cookie || "";
     const authCookie = cookies.split(";").map(c => c.trim()).find(c => c.startsWith("app_auth="));
@@ -515,6 +520,36 @@ app.post("/api/schedule/:id", async (req, res) => {
   }
 });
 
+// ── POST /api/viescolaire/:id — vie scolaire ──
+app.post("/api/viescolaire/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { token } = req.body;
+
+    const response = await fetch(
+      `${API_BASE}/eleves/${id}/viescolaire.awp?verbe=get&v=${API_VERSION}`,
+      {
+        method: "POST",
+        headers: authHeaders(token),
+        body: "data={}",
+        agent,
+      }
+    );
+
+    const headerToken = extractHeaderToken(response);
+    const data = await response.json();
+    if (headerToken) data.token = headerToken;
+
+    console.log("[VIESCOLAIRE] Code:", data.code,
+      "Absences:", data.data && data.data.absencesRetards ? data.data.absencesRetards.length : 0,
+      "Sanctions:", data.data && data.data.sanctionsEncouragements ? data.data.sanctionsEncouragements.length : 0);
+    res.json(data);
+  } catch (err) {
+    console.error("[VIESCOLAIRE] Erreur:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ══ ROUTES PERSISTANCE (Supabase) ══
 
 // ── Session ──
@@ -634,6 +669,30 @@ app.get("/api/cache/schedule/:userId/:weekStart", async (req, res) => {
     res.json({ success: true, cached });
   } catch (err) {
     console.error("[CACHE] Erreur load schedule:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Cache Vie Scolaire ──
+app.post("/api/cache/viescolaire", async (req, res) => {
+  try {
+    const { userId, data } = req.body;
+    await db.saveVieScolaireCache(String(userId), data);
+    console.log("[CACHE] Vie scolaire sauvegardee pour userId:", userId);
+    res.json({ success: true });
+  } catch (err) {
+    console.error("[CACHE] Erreur save viescolaire:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/cache/viescolaire/:userId", async (req, res) => {
+  try {
+    const cached = await db.loadVieScolaireCache(req.params.userId);
+    console.log("[CACHE] Vie scolaire chargee pour userId:", req.params.userId, cached ? "oui" : "non");
+    res.json({ success: true, cached });
+  } catch (err) {
+    console.error("[CACHE] Erreur load viescolaire:", err.message);
     res.status(500).json({ error: err.message });
   }
 });

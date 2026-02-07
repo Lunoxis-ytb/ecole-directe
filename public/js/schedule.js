@@ -1,6 +1,7 @@
 // ══ MODULE EMPLOI DU TEMPS ══
 const Schedule = {
   currentWeekStart: null,
+  _initialized: false,
 
   init() {
     // Calculer le lundi de la semaine courante
@@ -10,6 +11,10 @@ const Schedule = {
     this.currentWeekStart = new Date(now);
     this.currentWeekStart.setDate(now.getDate() + diff);
     this.currentWeekStart.setHours(0, 0, 0, 0);
+
+    // Eviter d'ajouter des listeners en double (logout → re-login)
+    if (this._initialized) return;
+    this._initialized = true;
 
     document.getElementById("prev-week").addEventListener("click", () => {
       this.currentWeekStart.setDate(this.currentWeekStart.getDate() - 7);

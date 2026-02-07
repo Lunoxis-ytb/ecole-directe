@@ -388,7 +388,7 @@ body::before {
 /* ══ STATS BAR ══ */
 .stats-bar {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   gap: 16px;
   padding: 24px 32px;
   animation: fadeInUp 0.5s ease-out 0.1s both;
@@ -924,177 +924,514 @@ select option {
 }
 
 @media (max-width: 600px) {
-  /* Header mobile */
+  /* ══ PERFORMANCE : pas de blur sur mobile ══ */
+  .dashboard-header, .stat-card, .grades-table, .homework-item,
+  .schedule-grid, .chart-wrapper, .btn-nav, .vs-day, .vs-stat-card,
+  .login-container, .tabs {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  /* Fonds solides */
+  .dashboard-header { background: rgba(14, 18, 30, 0.95); }
+  .stat-card, .grades-table, .homework-item, .chart-wrapper,
+  .schedule-grid, .vs-day, .vs-stat-card { background: rgba(14, 18, 30, 0.9); }
+  .login-container { background: rgba(14, 18, 30, 0.95); }
+
+  /* Pas de transitions / hover sur mobile */
+  .stat-card, .homework-item, .grades-table tbody tr, .vs-stat-card { transition: none; }
+  .stat-card:hover, .homework-item:hover, .schedule-event:hover,
+  .btn-nav:hover, .btn-logout:hover, .vs-stat-card:hover {
+    transform: none; box-shadow: none;
+  }
+  .avg-good, .avg-mid, .avg-bad { text-shadow: none; }
+  .stat-card, .homework-item, .chart-wrapper, .vs-day {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  }
+
+  /* ══ HEADER ══ */
   .dashboard-header {
-    flex-direction: column;
-    gap: 12px;
-    align-items: flex-start;
-    padding: 14px 16px;
+    padding: 12px 16px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
   }
+  .dashboard-header h1 { font-size: 17px; }
+  .student-name { font-size: 11px; padding: 2px 8px; }
+  .btn-logout { padding: 6px 12px; font-size: 11px; }
+  .header-left { gap: 8px; }
 
-  .header-left {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 6px;
-  }
-
-  .dashboard-header h1 {
-    font-size: 18px;
-  }
-
-  .btn-logout {
-    align-self: flex-end;
-    margin-top: -32px;
-  }
-
-  /* Stats mobile */
+  /* ══ STATS BAR — 2 colonnes, plus aere ══ */
   .stats-bar {
     grid-template-columns: repeat(2, 1fr);
     padding: 12px;
-    gap: 8px;
+    gap: 10px;
   }
 
   .stat-card {
-    padding: 14px;
-    gap: 6px;
+    padding: 14px 12px;
+    gap: 4px;
+    border-radius: 12px;
   }
 
-  .stat-value {
-    font-size: 20px;
-  }
+  .stat-value { font-size: 22px; }
+  .stat-label { font-size: 10px; letter-spacing: 0.5px; }
 
-  .stat-label {
-    font-size: 10px;
-  }
-
-  /* Tabs mobile */
+  /* ══ TABS — sticky sous le header ══ */
   .tabs {
-    padding: 0 8px;
+    padding: 0;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
+    background: rgba(14, 18, 30, 0.95);
+    position: sticky;
+    top: 49px;
+    z-index: 9;
   }
-
-  .tabs::-webkit-scrollbar {
-    display: none;
-  }
-
+  .tabs::-webkit-scrollbar { display: none; }
   .tab {
-    padding: 12px 16px;
+    padding: 11px 0;
     font-size: 13px;
     white-space: nowrap;
+    flex: 1;
+    text-align: center;
   }
 
-  /* Content mobile */
-  .tab-content {
-    padding: 12px;
-    -webkit-overflow-scrolling: touch;
-  }
-
+  /* ══ CONTENT ══ */
+  .tab-content { padding: 14px; }
   .panel-header {
     flex-direction: column;
+    gap: 10px;
+    align-items: flex-start;
+    margin-bottom: 14px;
+  }
+  .panel-header h2 { font-size: 17px; }
+
+  /* ══ NOTES ══ */
+  .grades-container { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .grades-table { font-size: 13px; min-width: 480px; }
+  .grades-table th, .grades-table td { padding: 10px 8px; }
+  .grade-detail td { padding: 8px 8px 8px 16px; }
+
+  /* Charts */
+  .charts-grid { grid-template-columns: 1fr; gap: 14px; margin-top: 14px; }
+  .chart-wrapper { padding: 12px; height: 240px; }
+  .chart-header { gap: 8px; margin-bottom: 8px; }
+  .chart-header h3 { font-size: 14px; }
+  .chart-header select { padding: 5px 8px; font-size: 12px; }
+
+  /* ══ LOGIN ══ */
+  .login-container {
+    padding: 28px 20px;
+    border-radius: 18px;
+  }
+  .login-container h1 { font-size: 26px; }
+
+  /* ══ DEVOIRS — cartes bien espacees ══ */
+  .homework-day { margin-bottom: 20px; }
+  .homework-day-header { font-size: 13px; padding-bottom: 8px; margin-bottom: 10px; }
+  .homework-item {
+    padding: 14px;
+    gap: 12px;
+    border-radius: 12px;
+    margin-bottom: 8px;
+  }
+  .homework-subject { font-size: 14px; margin-bottom: 4px; }
+  .homework-content { font-size: 13px; line-height: 1.6; }
+  .homework-check { width: 20px; height: 20px; margin-top: 1px; }
+
+  /* ══ EMPLOI DU TEMPS ══ */
+  .week-nav { gap: 6px; justify-content: space-between; }
+  .btn-nav {
+    padding: 8px 10px; font-size: 12px;
+    background: rgba(14, 18, 30, 0.9);
+  }
+  #week-label { font-size: 12px; min-width: auto; flex: 1; }
+  .schedule-container { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .schedule-grid {
+    font-size: 10px;
+    grid-template-columns: 40px repeat(5, minmax(70px, 1fr));
+    min-width: 400px;
+  }
+  .schedule-header { padding: 10px 4px; font-size: 11px; }
+  .schedule-event { backdrop-filter: none; padding: 4px 6px; }
+  .schedule-event:hover { transform: none; }
+  .schedule-event .event-subject { font-size: 10px; }
+  .schedule-event .event-room { font-size: 9px; }
+
+  /* ══ VIE SCOLAIRE — lisible et aere ══ */
+  .vs-stats {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+  /* Les 2 derniers (sanctions + encouragements) sur une ligne de 2 */
+  .vs-stats .vs-stat-card:nth-child(4),
+  .vs-stats .vs-stat-card:nth-child(5) {
+    grid-column: span 1;
+  }
+
+  .vs-stat-card { padding: 14px 8px; border-radius: 12px; }
+  .vs-stat-number { font-size: 22px; }
+  .vs-stat-label { font-size: 9px; letter-spacing: 0.5px; }
+
+  .vs-filters {
+    gap: 6px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    flex-wrap: nowrap;
+    padding-bottom: 4px;
+  }
+  .vs-filters::-webkit-scrollbar { display: none; }
+  .vs-filter-btn {
+    padding: 7px 12px;
+    font-size: 12px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .vs-day { border-radius: 12px; }
+  .vs-day-header { padding: 12px 14px; font-size: 13px; }
+  .vs-day-count { font-size: 11px; }
+
+  .vs-item {
+    padding: 12px 14px;
     gap: 12px;
     align-items: flex-start;
   }
 
-  .panel-header h2 {
-    font-size: 17px;
+  .vs-badge-icon {
+    width: 34px; height: 34px;
+    font-size: 15px; border-radius: 8px;
+    flex-shrink: 0;
   }
 
-  /* Grades table mobile */
-  .grades-table {
-    font-size: 13px;
-    min-width: 500px;
-  }
+  .vs-main-line { gap: 8px; }
+  .vs-tag { font-size: 10px; padding: 3px 7px; }
+  .vs-matiere { font-size: 13px; }
+  .vs-time { font-size: 12px; }
+  .vs-motif { font-size: 12px; margin-top: 3px; }
 
-  .grades-table th,
-  .grades-table td {
-    padding: 10px 10px;
-  }
-
-  .grade-detail td {
-    padding: 8px 10px 8px 20px;
-  }
-
-  /* Chart mobile */
-  .charts-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .chart-wrapper {
-    padding: 14px;
-    height: 280px;
-  }
-
-  .chart-header {
-    flex-direction: column;
-    gap: 10px;
-    align-items: flex-start;
-  }
-
-  /* Login mobile */
-  .login-container {
-    padding: 32px 20px;
-    border-radius: 20px;
-  }
-
-  .login-container h1 {
-    font-size: 26px;
-  }
-
-  /* Homework mobile */
-  .homework-item {
-    padding: 14px;
-    gap: 10px;
-  }
-
-  .homework-subject {
-    font-size: 13px;
-  }
-
-  .homework-content {
-    font-size: 12px;
-  }
-
-  /* Schedule mobile */
-  .week-nav {
-    flex-wrap: wrap;
-    gap: 8px;
-    justify-content: center;
-  }
-
-  .btn-nav {
-    padding: 8px 12px;
-    font-size: 12px;
-  }
-
-  #week-label {
-    font-size: 13px;
-    min-width: auto;
-    width: 100%;
-  }
-
-  .schedule-container {
-    overflow-x: auto;
+  /* ══ Scroll containers ══ */
+  .schedule-container, .grades-container, .viescolaire-container {
     -webkit-overflow-scrolling: touch;
   }
+}
 
-  .schedule-grid {
-    font-size: 10px;
-    grid-template-columns: 45px repeat(5, minmax(80px, 1fr));
-    min-width: 450px;
-  }
+/* ══ PERFORMANCE — content-visibility pour onglets masques ══ */
+.tab-panel:not(.active) {
+  content-visibility: hidden;
+}
 
-  .schedule-header {
-    padding: 10px 4px;
-    font-size: 11px;
-  }
+/* Containment sur items repetitifs */
+.schedule-event,
+.homework-item,
+.grades-table tbody tr {
+  contain: layout style paint;
+}
 
-  .schedule-event .event-subject {
-    font-size: 10px;
-  }
+/* ══ VIE SCOLAIRE ══ */
+.viescolaire-container {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
 
-  .schedule-event .event-room {
-    font-size: 9px;
-  }
+/* ── Stats resume ── */
+.vs-stats {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+}
+
+.vs-stat-card {
+  background: var(--bg-glass);
+  backdrop-filter: blur(var(--blur));
+  -webkit-backdrop-filter: blur(var(--blur));
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius);
+  padding: 18px 14px;
+  text-align: center;
+  cursor: pointer;
+  transition: var(--transition);
+  position: relative;
+  overflow: hidden;
+}
+
+.vs-stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+}
+
+.vs-stat-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-glass-strong);
+}
+
+.vs-stat-danger::before { background: var(--red); }
+.vs-stat-success::before { background: var(--green); }
+.vs-stat-warning::before { background: var(--orange); }
+.vs-stat-purple::before { background: #a78bfa; }
+.vs-stat-blue::before { background: var(--accent); }
+
+.vs-stat-number {
+  display: block;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+}
+
+.vs-stat-danger .vs-stat-number { color: var(--red); }
+.vs-stat-success .vs-stat-number { color: var(--green); }
+.vs-stat-warning .vs-stat-number { color: var(--orange); }
+.vs-stat-purple .vs-stat-number { color: #a78bfa; }
+.vs-stat-blue .vs-stat-number { color: var(--accent); }
+
+.vs-stat-label {
+  display: block;
+  font-size: 10px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  margin-top: 6px;
+  font-weight: 500;
+}
+
+/* ── Filtres ── */
+.vs-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.vs-filter-btn {
+  padding: 7px 14px;
+  background: var(--bg-glass);
+  border: 1px solid var(--border-glass);
+  border-radius: 20px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-family: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.vs-filter-btn:hover {
+  border-color: var(--border-glass-strong);
+  color: var(--text-primary);
+}
+
+.vs-filter-btn.active {
+  background: rgba(108, 140, 255, 0.15);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.vs-f-danger.active { background: rgba(248, 113, 113, 0.15); border-color: var(--red); color: var(--red); }
+.vs-f-success.active { background: rgba(52, 211, 153, 0.15); border-color: var(--green); color: var(--green); }
+.vs-f-warning.active { background: rgba(251, 191, 36, 0.15); border-color: var(--orange); color: var(--orange); }
+.vs-f-purple.active { background: rgba(139, 92, 246, 0.15); border-color: #a78bfa; color: #a78bfa; }
+.vs-f-blue.active { background: rgba(108, 140, 255, 0.15); border-color: var(--accent); color: var(--accent); }
+
+/* ── Jour ── */
+.vs-day {
+  background: var(--bg-glass);
+  backdrop-filter: blur(var(--blur));
+  -webkit-backdrop-filter: blur(var(--blur));
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  animation: fadeInUp 0.4s ease-out both;
+}
+
+.vs-day-header {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent);
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border-glass);
+  text-transform: capitalize;
+  background: rgba(255, 255, 255, 0.03);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.vs-day-count {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+
+/* ── Item ── */
+.vs-item {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  padding: 14px 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  transition: var(--transition);
+}
+
+.vs-item:last-child {
+  border-bottom: none;
+}
+
+.vs-item:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+/* ── Icone badge ── */
+.vs-badge-icon {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+}
+
+.vs-badge-icon.vs-absence {
+  background: rgba(248, 113, 113, 0.15);
+  color: var(--red);
+}
+
+.vs-badge-icon.vs-absence.vs-justified {
+  background: rgba(52, 211, 153, 0.15);
+  color: var(--green);
+}
+
+.vs-badge-icon.vs-retard {
+  background: rgba(251, 191, 36, 0.15);
+  color: var(--orange);
+}
+
+.vs-badge-icon.vs-sanction {
+  background: rgba(139, 92, 246, 0.15);
+  color: #a78bfa;
+}
+
+.vs-badge-icon.vs-encouragement {
+  background: rgba(108, 140, 255, 0.15);
+  color: var(--accent);
+}
+
+/* ── Contenu ── */
+.vs-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.vs-main-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.vs-tag {
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.vs-tag.vs-absence { background: rgba(248, 113, 113, 0.15); color: var(--red); }
+.vs-tag.vs-absence.vs-justified { background: rgba(52, 211, 153, 0.15); color: var(--green); }
+.vs-tag.vs-retard { background: rgba(251, 191, 36, 0.15); color: var(--orange); }
+.vs-tag.vs-sanction { background: rgba(139, 92, 246, 0.15); color: #a78bfa; }
+.vs-tag.vs-encouragement { background: rgba(108, 140, 255, 0.15); color: var(--accent); }
+
+.vs-matiere {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.vs-time {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.vs-motif {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+/* ══ PWA INSTALL BANNER ══ */
+.install-banner {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 24px;
+  background: linear-gradient(135deg, rgba(108, 140, 255, 0.2), rgba(139, 92, 246, 0.2));
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(108, 140, 255, 0.3);
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 500;
+  animation: slideDown 0.4s ease-out;
+}
+
+.install-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.install-btn {
+  padding: 6px 16px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.install-btn:hover {
+  background: var(--accent-hover);
+}
+
+.install-dismiss {
+  padding: 6px 12px;
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-glass);
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.install-dismiss:hover {
+  color: var(--text-primary);
+  border-color: var(--border-glass-strong);
+}
+
+/* ══ PWA MODE — safe area ══ */
+body.pwa-mode {
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
 }

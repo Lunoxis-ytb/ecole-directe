@@ -4,6 +4,21 @@ const Grades = {
   chart: null,
   currentSemester: null,
   currentNotes: null,
+  _chartLoaded: false,
+
+  async ensureChartJs() {
+    if (this._chartLoaded || typeof Chart !== "undefined") {
+      this._chartLoaded = true;
+      return;
+    }
+    return new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = "https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js";
+      script.onload = () => { this._chartLoaded = true; resolve(); };
+      script.onerror = () => reject(new Error("Chart.js failed to load"));
+      document.head.appendChild(script);
+    });
+  },
 
   async load() {
     const container = document.getElementById("grades-container");
@@ -141,18 +156,15 @@ const Grades = {
     const rankEl = document.getElementById("stat-rank");
     if (rankEl) rankEl.textContent = generalRank || "N/A";
 
-    let html = `<table class="grades-table">
-      <thead>
-        <tr>
-          <th>Matiere</th>
-          <th>Moyenne</th>
-          <th>Rang</th>
-          <th>Nb notes</th>
-          <th>Min</th>
-          <th>Max</th>
-        </tr>
-      </thead>
-      <tbody>`;
+    // Build table with DocumentFragment for performance
+    const table = document.createElement("table");
+    table.className = "grades-table";
+    table.innerHTML = `<thead><tr>
+      <th>Matiere</th><th>Moyenne</th><th>Rang</th><th>Nb notes</th><th>Min</th><th>Max</th>
+    </tr></thead>`;
+
+    const tbody = document.createElement("tbody");
+    const fragment = document.createDocumentFragment();
 
     for (const s of subjectList) {
       const avgNum = parseFloat(s.avg);
@@ -166,48 +178,44 @@ const Grades = {
       const min = values.length > 0 ? Math.min(...values).toFixed(1) : "--";
       const max = values.length > 0 ? Math.max(...values).toFixed(1) : "--";
 
-      html += `<tr class="subject-row" data-subject="${s.name}">
-        <td>${s.name}</td>
-        <td class="${avgClass}">${s.avg}</td>
-        <td class="rank-cell">${s.rank}</td>
-        <td>${s.notes.length}</td>
-        <td>${min}</td>
-        <td>${max}</td>
-      </tr>`;
+      const row = document.createElement("tr");
+      row.className = "subject-row";
+      row.dataset.subject = s.name;
+      row.innerHTML = `<td>${s.name}</td><td class="${avgClass}">${s.avg}</td><td class="rank-cell">${s.rank}</td><td>${s.notes.length}</td><td>${min}</td><td>${max}</td>`;
+
+      row.addEventListener("click", () => {
+        const details = tbody.querySelectorAll(`.grade-detail[data-subject="${s.name}"]`);
+        details.forEach((d) => { d.style.display = d.style.display === "none" ? "" : "none"; });
+      });
+
+      fragment.appendChild(row);
 
       for (const n of s.notes) {
         const dateStr = n.date ? new Date(n.date).toLocaleDateString("fr-FR") : "";
-        html += `<tr class="grade-detail" data-subject="${s.name}" style="display:none">
-          <td>${n.devoir || ""}</td>
-          <td>${n.valeur}/${n.noteSur}</td>
-          <td>${dateStr}</td>
-          <td colspan="3">${n.commentaire || ""}</td>
-        </tr>`;
+        const detail = document.createElement("tr");
+        detail.className = "grade-detail";
+        detail.dataset.subject = s.name;
+        detail.style.display = "none";
+        detail.innerHTML = `<td>${n.devoir || ""}</td><td>${n.valeur}/${n.noteSur}</td><td>${dateStr}</td><td colspan="3">${n.commentaire || ""}</td>`;
+        fragment.appendChild(detail);
       }
     }
 
-    html += "</tbody></table>";
-    container.innerHTML = html;
+    tbody.appendChild(fragment);
+    table.appendChild(tbody);
+    container.innerHTML = "";
+    container.appendChild(table);
 
-    // Toggle details au clic
-    container.querySelectorAll(".subject-row").forEach((row) => {
-      row.addEventListener("click", () => {
-        const subject = row.dataset.subject;
-        const details = container.querySelectorAll(
-          `.grade-detail[data-subject="${subject}"]`
-        );
-        details.forEach((d) => {
-          d.style.display = d.style.display === "none" ? "" : "none";
-        });
-      });
-    });
-
-    // Graphiques
-    this.renderLineChart();
-    this.renderClassChart();
+    // Graphiques (lazy load Chart.js)
+    this.ensureChartJs().then(() => {
+      this.renderLineChart();
+      this.renderClassChart();
+    }).catch((err) => console.warn("[GRADES] Chart.js non disponible:", err.message));
   },
 
   // Remplir le selecteur de matieres pour le graphique
+  _chartSelectBound: false,
+
   initChartSubjectSelect() {
     const select = document.getElementById("chart-subject-select");
     if (!select || !this.rawData || !this.rawData.notes) return;
@@ -227,9 +235,13 @@ const Grades = {
       select.innerHTML += `<option value="${code}">${name}</option>`;
     }
 
-    select.addEventListener("change", () => {
-      this.renderLineChart(select.value || null);
-    });
+    // Eviter d'empiler des listeners a chaque appel
+    if (!this._chartSelectBound) {
+      this._chartSelectBound = true;
+      select.addEventListener("change", () => {
+        this.renderLineChart(select.value || null);
+      });
+    }
   },
 
   // Graphique 1 : Evolution de ma moyenne personnelle

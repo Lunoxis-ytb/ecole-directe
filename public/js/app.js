@@ -164,6 +164,9 @@
         if (target === "schedule") {
           Schedule.load();
         }
+        if (target === "viescolaire" && !VieScolaire.rawData) {
+          VieScolaire.load();
+        }
       });
     });
   }
@@ -181,10 +184,11 @@
   async function loadDashboard() {
     // Charger notes en premier (bloquant pour l'affichage)
     await Grades.load();
-    // Charger devoirs + emploi du temps en parallele pour les stats
+    // Charger devoirs + emploi du temps + vie scolaire en parallele pour les stats
     Schedule.init();
     Schedule.load();
     Homework.load();
+    VieScolaire.load();
   }
 
   // ── Toggle mot de passe ──
@@ -274,13 +278,69 @@
     API.token = null;
     API.userId = null;
     Grades.rawData = null;
+    Grades.currentNotes = null;
     Homework.rawData = null;
+    Homework.doneStatus = {};
+    VieScolaire.rawData = null;
     if (Grades.chart) {
       Grades.chart.destroy();
       Grades.chart = null;
     }
+    if (Grades.classChart) {
+      Grades.classChart.destroy();
+      Grades.classChart = null;
+    }
     showLogin();
   });
+
+  // ── PWA Install Prompt ──
+  let deferredPrompt = null;
+
+  window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+
+    // Check cooldown (7 days)
+    const dismissed = localStorage.getItem("edmm_install_dismissed");
+    if (dismissed && Date.now() - parseInt(dismissed) < 7 * 24 * 60 * 60 * 1000) return;
+
+    showInstallBanner();
+  });
+
+  function showInstallBanner() {
+    if (document.querySelector(".install-banner")) return;
+
+    const banner = document.createElement("div");
+    banner.className = "install-banner";
+    banner.innerHTML = `
+      <span>Installer EDMM pour un acces rapide</span>
+      <div class="install-actions">
+        <button class="install-btn" id="install-accept">Installer</button>
+        <button class="install-dismiss" id="install-dismiss">Plus tard</button>
+      </div>
+    `;
+    document.body.prepend(banner);
+
+    document.getElementById("install-accept").addEventListener("click", async () => {
+      if (deferredPrompt) {
+        deferredPrompt.prompt();
+        const result = await deferredPrompt.userChoice;
+        console.log("[PWA] Install choice:", result.outcome);
+        deferredPrompt = null;
+      }
+      banner.remove();
+    });
+
+    document.getElementById("install-dismiss").addEventListener("click", () => {
+      localStorage.setItem("edmm_install_dismissed", String(Date.now()));
+      banner.remove();
+    });
+  }
+
+  // Detect standalone mode (installed PWA)
+  if (window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone) {
+    document.body.classList.add("pwa-mode");
+  }
 
   // ── Init ──
   initTabs();
