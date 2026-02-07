@@ -125,9 +125,15 @@
           <div class="chart-section">
             <div class="chart-header">
               <h3>Mon evolution</h3>
-              <select id="chart-subject-select">
-                <option value="">Toutes matieres</option>
-              </select>
+              <div class="chart-controls">
+                <div class="chart-pills">
+                  <button class="chart-pill active" id="pill-classe" title="Afficher/masquer la moyenne de classe">Classe</button>
+                  <button class="chart-pill" id="pill-mode" title="Basculer entre moyenne glissante et ligne fixe">Fixe</button>
+                </div>
+                <select id="chart-subject-select">
+                  <option value="">Toutes matieres</option>
+                </select>
+              </div>
             </div>
             <div class="chart-wrapper">
               <canvas id="grades-chart"></canvas>

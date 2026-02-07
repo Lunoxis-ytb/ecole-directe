@@ -662,6 +662,42 @@ select option {
   transition: var(--transition);
 }
 
+/* Chart controls row */
+.chart-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.chart-pills {
+  display: flex;
+  gap: 6px;
+}
+
+.chart-pill {
+  padding: 5px 12px;
+  border-radius: 20px;
+  border: 1px solid var(--border-glass);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-family: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.chart-pill:hover {
+  border-color: var(--border-glass-strong);
+  color: var(--text-primary);
+}
+
+.chart-pill.active {
+  background: rgba(139, 92, 246, 0.15);
+  border-color: #a78bfa;
+  color: #a78bfa;
+}
+
 .chart-wrapper {
   background: var(--bg-glass);
   backdrop-filter: blur(var(--blur));
@@ -1031,9 +1067,12 @@ select option {
   /* Charts */
   .charts-grid { grid-template-columns: 1fr; gap: 14px; margin-top: 14px; }
   .chart-wrapper { padding: 12px; height: 240px; }
-  .chart-header { gap: 8px; margin-bottom: 8px; }
-  .chart-header h3 { font-size: 14px; }
+  .chart-header { flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+  .chart-header h3 { font-size: 14px; width: 100%; }
   .chart-header select { padding: 5px 8px; font-size: 12px; }
+  .chart-controls { gap: 8px; flex-wrap: wrap; }
+  .chart-pill { padding: 4px 10px; font-size: 11px; }
+  .chart-pills { gap: 4px; }
 
   /* ══ LOGIN ══ */
   .login-container {

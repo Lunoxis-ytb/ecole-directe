@@ -215,6 +215,8 @@ const Grades = {
 
   // Remplir le selecteur de matieres pour le graphique
   _chartSelectBound: false,
+  _showClassAvg: true,
+  _classAvgMode: "running", // "running" ou "fixed"
 
   initChartSubjectSelect() {
     const select = document.getElementById("chart-subject-select");
@@ -229,7 +231,7 @@ const Grades = {
     }
 
     // Garder "Moyenne generale" comme premier choix
-    select.innerHTML = '<option value="">Moyenne generale</option>';
+    select.innerHTML = '<option value="">Toutes matieres</option>';
     const sorted = [...subjects.entries()].sort((a, b) => a[1].localeCompare(b[1]));
     for (const [code, name] of sorted) {
       select.innerHTML += `<option value="${code}">${name}</option>`;
@@ -241,10 +243,67 @@ const Grades = {
       select.addEventListener("change", () => {
         this.renderLineChart(select.value || null);
       });
+
+      // Pill Classe : toggle on/off
+      const pillClasse = document.getElementById("pill-classe");
+      if (pillClasse) {
+        pillClasse.addEventListener("click", () => {
+          this._showClassAvg = !this._showClassAvg;
+          pillClasse.classList.toggle("active", this._showClassAvg);
+          this.renderLineChart(select.value || null);
+        });
+      }
+
+      // Pill Mode : toggle running/fixed
+      const pillMode = document.getElementById("pill-mode");
+      if (pillMode) {
+        pillMode.addEventListener("click", () => {
+          this._classAvgMode = this._classAvgMode === "running" ? "fixed" : "running";
+          pillMode.textContent = this._classAvgMode === "running" ? "Fixe" : "Glissante";
+          this.renderLineChart(select.value || null);
+        });
+      }
     }
   },
 
-  // Graphique 1 : Evolution de ma moyenne personnelle
+  // Calculer la moyenne de classe pour un filtre matiere donne
+  _getClassAvgForSubject(subjectFilter) {
+    const data = this.rawData;
+    if (!data || !data.periodes) return null;
+
+    const periode = data.periodes.find((p) => p.codePeriode === this.currentSemester);
+    if (!periode || !periode.ensembleMatieres || !periode.ensembleMatieres.disciplines) return null;
+
+    if (subjectFilter) {
+      // Moyenne classe d'une matiere specifique
+      for (const disc of periode.ensembleMatieres.disciplines) {
+        if (disc.codeMatiere === subjectFilter) {
+          const val = disc.moyenneClasse;
+          if (val) return parseFloat(String(val).replace(",", "."));
+        }
+      }
+      return null;
+    }
+
+    // Moyenne classe generale
+    let classAvg = periode.moyenneClasse
+      || (periode.ensembleMatieres && periode.ensembleMatieres.moyenneClasse)
+      || null;
+
+    if (!classAvg) {
+      const discs = periode.ensembleMatieres.disciplines.filter(
+        (d) => d.moyenneClasse && !isNaN(parseFloat(String(d.moyenneClasse).replace(",", ".")))
+      );
+      if (discs.length > 0) {
+        const sum = discs.reduce((acc, d) => acc + parseFloat(String(d.moyenneClasse).replace(",", ".")), 0);
+        classAvg = (sum / discs.length).toFixed(2);
+      }
+    }
+
+    return classAvg ? parseFloat(String(classAvg).replace(",", ".")) : null;
+  },
+
+  // Graphique 1 : Evolution de ma moyenne + moyenne classe
   renderLineChart(subjectFilter) {
     const canvas = document.getElementById("grades-chart");
     if (!canvas) return;
@@ -276,6 +335,11 @@ const Grades = {
     const noteDetails = [];
     let runningSum = 0;
 
+    // Moyenne classe glissante : calculer a partir des moyenneClasse de chaque note
+    const classRunningData = [];
+    let classRunningSum = 0;
+    let classRunningCount = 0;
+
     for (let i = 0; i < validNotes.length; i++) {
       const n = validNotes[i];
       const val = (parseFloat(n.valeur) / parseFloat(n.noteSur)) * 20;
@@ -292,7 +356,20 @@ const Grades = {
         devoir: n.devoir || "",
         sur20: valRounded,
       });
+
+      // Moyenne classe glissante
+      if (n.moyenneClasse) {
+        const classVal = parseFloat(String(n.moyenneClasse).replace(",", "."));
+        if (!isNaN(classVal)) {
+          classRunningSum += classVal;
+          classRunningCount++;
+        }
+      }
+      classRunningData.push(classRunningCount > 0 ? parseFloat((classRunningSum / classRunningCount).toFixed(2)) : null);
     }
+
+    // Moyenne classe fixe (du semestre)
+    const fixedClassAvg = this._getClassAvgForSubject(subjectFilter);
 
     // Gradient bleu sous la courbe
     const h = canvas.parentElement ? canvas.parentElement.clientHeight : 300;
@@ -300,42 +377,92 @@ const Grades = {
     gradient.addColorStop(0, "rgba(79, 140, 255, 0.20)");
     gradient.addColorStop(1, "rgba(79, 140, 255, 0)");
 
+    // Datasets
+    const datasets = [
+      {
+        label: "Ma moyenne",
+        data: avgData,
+        borderColor: "#4f8cff",
+        backgroundColor: gradient,
+        borderWidth: 2.5,
+        pointRadius: 3,
+        pointBackgroundColor: "#4f8cff",
+        pointHoverRadius: 6,
+        pointHoverBackgroundColor: "#4f8cff",
+        pointHoverBorderColor: "#fff",
+        pointHoverBorderWidth: 2,
+        tension: 0.35,
+        fill: true,
+      },
+      {
+        label: "Notes",
+        data: individualData,
+        showLine: false,
+        pointRadius: 5,
+        pointHoverRadius: 8,
+        pointBackgroundColor: individualData.map(v =>
+          v >= 14 ? "#34d399" : v >= 10 ? "#fbbf24" : "#f87171"
+        ),
+        pointBorderColor: individualData.map(v =>
+          v >= 14 ? "rgba(52,211,153,0.3)" : v >= 10 ? "rgba(251,191,36,0.3)" : "rgba(248,113,113,0.3)"
+        ),
+        pointBorderWidth: 2,
+      },
+    ];
+
+    // Ajouter la courbe classe si activee
+    if (this._showClassAvg) {
+      if (this._classAvgMode === "running") {
+        // Moyenne classe glissante
+        const hasClassData = classRunningData.some(v => v !== null);
+        if (hasClassData) {
+          datasets.push({
+            label: "Classe (glissante)",
+            data: classRunningData,
+            borderColor: "#a78bfa",
+            borderWidth: 2,
+            borderDash: [6, 3],
+            pointRadius: 0,
+            pointHoverRadius: 4,
+            pointBackgroundColor: "#a78bfa",
+            tension: 0.35,
+            fill: false,
+          });
+        } else if (fixedClassAvg) {
+          // Fallback vers ligne fixe si pas de donnees glissantes
+          datasets.push({
+            label: "Classe",
+            data: labels.map(() => fixedClassAvg),
+            borderColor: "#a78bfa",
+            borderWidth: 2,
+            borderDash: [6, 3],
+            pointRadius: 0,
+            pointHoverRadius: 0,
+            tension: 0,
+            fill: false,
+          });
+        }
+      } else {
+        // Ligne fixe horizontale
+        if (fixedClassAvg) {
+          datasets.push({
+            label: "Classe (semestre)",
+            data: labels.map(() => fixedClassAvg),
+            borderColor: "#a78bfa",
+            borderWidth: 2,
+            borderDash: [8, 4],
+            pointRadius: 0,
+            pointHoverRadius: 0,
+            tension: 0,
+            fill: false,
+          });
+        }
+      }
+    }
+
     this.chart = new Chart(canvas, {
       type: "line",
-      data: {
-        labels,
-        datasets: [
-          {
-            label: "Moyenne",
-            data: avgData,
-            borderColor: "#4f8cff",
-            backgroundColor: gradient,
-            borderWidth: 2.5,
-            pointRadius: 3,
-            pointBackgroundColor: "#4f8cff",
-            pointHoverRadius: 6,
-            pointHoverBackgroundColor: "#4f8cff",
-            pointHoverBorderColor: "#fff",
-            pointHoverBorderWidth: 2,
-            tension: 0.35,
-            fill: true,
-          },
-          {
-            label: "Notes",
-            data: individualData,
-            showLine: false,
-            pointRadius: 5,
-            pointHoverRadius: 8,
-            pointBackgroundColor: individualData.map(v =>
-              v >= 14 ? "#34d399" : v >= 10 ? "#fbbf24" : "#f87171"
-            ),
-            pointBorderColor: individualData.map(v =>
-              v >= 14 ? "rgba(52,211,153,0.3)" : v >= 10 ? "rgba(251,191,36,0.3)" : "rgba(248,113,113,0.3)"
-            ),
-            pointBorderWidth: 2,
-          },
-        ],
-      },
+      data: { labels, datasets },
       options: {
         responsive: true,
         maintainAspectRatio: false,
@@ -364,7 +491,8 @@ const Grades = {
                 if (ctx.dataset.label === "Notes" && d) {
                   return `Note: ${d.valeur}/${d.noteSur}${parseFloat(d.noteSur) !== 20 ? ` (${d.sur20}/20)` : ""}`;
                 }
-                if (ctx.dataset.label === "Moyenne") return `Moyenne: ${ctx.parsed.y}/20`;
+                if (ctx.dataset.label === "Ma moyenne") return `Ma moyenne: ${ctx.parsed.y}/20`;
+                if (ctx.dataset.label.startsWith("Classe")) return `Classe: ${ctx.parsed.y}/20`;
                 return null;
               },
               afterBody(ctx) {
