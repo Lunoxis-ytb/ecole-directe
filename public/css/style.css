@@ -481,6 +481,9 @@ body::before {
   border-bottom-color: var(--accent);
 }
 
+/* Tab labels : full par defaut, short sur mobile */
+.tab-short { display: none; }
+
 .tab.active::after {
   content: '';
   position: absolute;
@@ -1002,9 +1005,12 @@ select option {
     padding: 11px 0;
     font-size: 13px;
     white-space: nowrap;
-    flex: 1;
+    flex: 1 1 0;
     text-align: center;
+    min-width: 0;
   }
+  .tab-full { display: none; }
+  .tab-short { display: inline; }
 
   /* ══ CONTENT ══ */
   .tab-content { padding: 14px; }

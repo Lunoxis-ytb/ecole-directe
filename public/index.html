@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/style.css">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <meta name="mobile-web-app-capable" content="yes">
 </head>
 <body>
 
@@ -92,13 +92,18 @@
         <span class="stat-label">Prochain cours</span>
         <span class="stat-value" id="stat-next-class">--</span>
       </div>
+      <div class="stat-card">
+        <span class="stat-label">Absences non just.</span>
+        <span class="stat-value" id="stat-absences">--</span>
+      </div>
     </div>
 
     <!-- Navigation tabs -->
     <nav class="tabs">
-      <button class="tab active" data-tab="grades">Notes</button>
-      <button class="tab" data-tab="homework">Devoirs</button>
-      <button class="tab" data-tab="schedule">Emploi du temps</button>
+      <button class="tab active" data-tab="grades"><span class="tab-full">Notes</span><span class="tab-short">Notes</span></button>
+      <button class="tab" data-tab="homework"><span class="tab-full">Devoirs</span><span class="tab-short">Devoirs</span></button>
+      <button class="tab" data-tab="schedule"><span class="tab-full">Emploi du temps</span><span class="tab-short">EDT</span></button>
+      <button class="tab" data-tab="viescolaire"><span class="tab-full">Vie Scolaire</span><span class="tab-short">Vie Scol.</span></button>
     </nav>
 
     <!-- Tab content -->
@@ -164,6 +169,16 @@
         </div>
       </section>
 
+      <!-- Vie Scolaire -->
+      <section id="tab-viescolaire" class="tab-panel">
+        <div class="panel-header">
+          <h2>Vie Scolaire</h2>
+        </div>
+        <div id="viescolaire-container" class="viescolaire-container">
+          <p class="loading">Chargement de la vie scolaire...</p>
+        </div>
+      </section>
+
     </main>
   </div>
 
@@ -171,6 +186,7 @@
   <script src="/js/grades.js"></script>
   <script src="/js/homework.js"></script>
   <script src="/js/schedule.js"></script>
+  <script src="/js/viescolaire.js"></script>
   <script src="/js/app.js"></script>
   <script>
     if ("serviceWorker" in navigator) {
