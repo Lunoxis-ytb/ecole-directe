@@ -984,22 +984,22 @@ select option {
     -webkit-overflow-scrolling: touch;
     scroll-snap-type: x mandatory;
     scrollbar-width: none;
-    padding: 12px 14px;
-    gap: 10px;
+    padding: 16px 16px;
+    gap: 12px;
   }
 
   .stats-bar::-webkit-scrollbar { display: none; }
 
   .stat-card {
     flex: 0 0 auto;
-    width: 130px;
-    padding: 14px 12px;
-    gap: 4px;
-    border-radius: 12px;
+    width: 135px;
+    padding: 16px 14px;
+    gap: 6px;
+    border-radius: 14px;
     scroll-snap-align: start;
   }
 
-  .stat-value { font-size: 22px; }
+  .stat-value { font-size: 24px; }
   .stat-label { font-size: 10px; letter-spacing: 0.5px; }
 
   /* ══ TABS — sticky sous le header ══ */
@@ -1015,7 +1015,7 @@ select option {
   }
   .tabs::-webkit-scrollbar { display: none; }
   .tab {
-    padding: 11px 0;
+    padding: 13px 0;
     font-size: 13px;
     white-space: nowrap;
     flex: 1 1 0;
@@ -1026,149 +1026,151 @@ select option {
   .tab-short { display: inline; }
 
   /* ══ CONTENT ══ */
-  .tab-content { padding: 14px; }
+  .tab-content { padding: 18px 16px; }
   .panel-header {
     flex-direction: column;
-    gap: 10px;
+    gap: 12px;
     align-items: flex-start;
-    margin-bottom: 14px;
+    margin-bottom: 18px;
   }
-  .panel-header h2 { font-size: 17px; }
+  .panel-header h2 { font-size: 19px; }
 
   /* ══ NOTES ══ */
   .grades-container { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  .grades-table { font-size: 13px; min-width: 480px; }
-  .grades-table th, .grades-table td { padding: 10px 8px; }
-  .grade-detail td { padding: 8px 8px 8px 16px; }
+  .grades-table { font-size: 14px; min-width: 480px; }
+  .grades-table th, .grades-table td { padding: 12px 10px; }
+  .grade-detail td { padding: 10px 10px 10px 18px; }
 
   /* Charts */
-  .charts-grid { gap: 14px; margin-top: 14px; }
-  .chart-wrapper { padding: 12px; height: 260px; }
-  .chart-header { flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
-  .chart-header h3 { font-size: 14px; }
-  .chart-header select { padding: 5px 8px; font-size: 12px; }
+  .charts-grid { gap: 18px; margin-top: 18px; }
+  .chart-wrapper { padding: 14px; height: 270px; }
+  .chart-header { flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
+  .chart-header h3 { font-size: 15px; }
+  .chart-header select { padding: 6px 10px; font-size: 13px; }
 
   /* ══ LOGIN ══ */
   .login-container {
-    padding: 28px 20px;
-    border-radius: 18px;
+    padding: 32px 22px;
+    border-radius: 20px;
   }
   .login-container h1 { font-size: 26px; }
 
   /* ══ DEVOIRS — cartes bien espacees ══ */
-  .homework-day { margin-bottom: 20px; }
-  .homework-day-header { font-size: 13px; padding-bottom: 8px; margin-bottom: 10px; }
+  .homework-day { margin-bottom: 24px; }
+  .homework-day-header { font-size: 14px; padding-bottom: 10px; margin-bottom: 12px; }
   .homework-item {
-    padding: 14px;
-    gap: 12px;
-    border-radius: 12px;
-    margin-bottom: 8px;
+    padding: 16px;
+    gap: 14px;
+    border-radius: 14px;
+    margin-bottom: 12px;
   }
-  .homework-subject { font-size: 14px; margin-bottom: 4px; }
-  .homework-content { font-size: 13px; line-height: 1.6; }
-  .homework-check { width: 20px; height: 20px; margin-top: 1px; }
+  .homework-subject { font-size: 15px; margin-bottom: 6px; }
+  .homework-content { font-size: 14px; line-height: 1.7; }
+  .homework-check { width: 22px; height: 22px; margin-top: 1px; }
 
   /* ══ EMPLOI DU TEMPS ══ */
-  .week-nav { gap: 6px; justify-content: space-between; }
+  .week-nav { gap: 8px; justify-content: space-between; margin-bottom: 14px; }
   .btn-nav {
-    padding: 8px 10px; font-size: 12px;
+    padding: 10px 12px; font-size: 13px;
     background: rgba(14, 18, 30, 0.9);
+    border-radius: 10px;
   }
-  #week-label { font-size: 12px; min-width: auto; flex: 1; }
+  #week-label { font-size: 13px; min-width: auto; flex: 1; }
   .schedule-container { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .schedule-grid {
-    font-size: 10px;
-    grid-template-columns: 40px repeat(5, minmax(70px, 1fr));
-    min-width: 400px;
+    font-size: 11px;
+    grid-template-columns: 42px repeat(5, minmax(72px, 1fr));
+    min-width: 420px;
   }
-  .schedule-header { padding: 10px 4px; font-size: 11px; }
-  .schedule-event { backdrop-filter: none; padding: 4px 6px; }
+  .schedule-header { padding: 12px 5px; font-size: 12px; }
+  .schedule-event { backdrop-filter: none; padding: 5px 7px; }
   .schedule-event:hover { transform: none; }
-  .schedule-event .event-subject { font-size: 10px; }
+  .schedule-event .event-subject { font-size: 11px; }
   .schedule-event .event-room { font-size: 9px; }
 
   /* ══ VIE SCOLAIRE — lisible et aere ══ */
   .vs-stats {
     grid-template-columns: repeat(3, 1fr);
-    gap: 8px;
+    gap: 10px;
   }
-  /* Les 2 derniers (sanctions + encouragements) sur une ligne de 2 */
   .vs-stats .vs-stat-card:nth-child(4),
   .vs-stats .vs-stat-card:nth-child(5) {
     grid-column: span 1;
   }
 
-  .vs-stat-card { padding: 14px 8px; border-radius: 12px; }
-  .vs-stat-number { font-size: 22px; }
-  .vs-stat-label { font-size: 9px; letter-spacing: 0.5px; }
+  .vs-stat-card { padding: 16px 10px; border-radius: 14px; }
+  .vs-stat-number { font-size: 24px; }
+  .vs-stat-label { font-size: 10px; letter-spacing: 0.5px; }
 
   .vs-filters {
-    gap: 6px;
+    gap: 8px;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
     flex-wrap: nowrap;
-    padding-bottom: 4px;
+    padding-bottom: 6px;
   }
   .vs-filters::-webkit-scrollbar { display: none; }
   .vs-filter-btn {
-    padding: 7px 12px;
-    font-size: 12px;
+    padding: 9px 14px;
+    font-size: 13px;
     white-space: nowrap;
     flex-shrink: 0;
   }
 
-  .vs-day { border-radius: 12px; }
-  .vs-day-header { padding: 12px 14px; font-size: 13px; }
-  .vs-day-count { font-size: 11px; }
+  .vs-day { border-radius: 14px; margin-bottom: 14px; }
+  .vs-day-header { padding: 14px 16px; font-size: 14px; }
+  .vs-day-count { font-size: 12px; }
 
   .vs-item {
-    padding: 12px 14px;
-    gap: 12px;
+    padding: 14px 16px;
+    gap: 14px;
     align-items: flex-start;
   }
 
   .vs-badge-icon {
-    width: 34px; height: 34px;
-    font-size: 15px; border-radius: 8px;
+    width: 38px; height: 38px;
+    font-size: 16px; border-radius: 10px;
     flex-shrink: 0;
   }
 
-  .vs-main-line { gap: 8px; }
-  .vs-tag { font-size: 10px; padding: 3px 7px; }
-  .vs-matiere { font-size: 13px; }
-  .vs-time { font-size: 12px; }
-  .vs-motif { font-size: 12px; margin-top: 3px; }
+  .vs-main-line { gap: 10px; }
+  .vs-tag { font-size: 11px; padding: 4px 9px; }
+  .vs-matiere { font-size: 14px; }
+  .vs-time { font-size: 13px; }
+  .vs-motif { font-size: 13px; margin-top: 4px; }
 
   /* ══ BULLETIN ══ */
-  .bul-header { flex-direction: column; align-items: flex-start; }
-  .bul-avg-cards { width: 100%; }
-  .bul-avg-card { flex: 1; padding: 12px 10px; min-width: 0; }
-  .bul-avg-value { font-size: 20px; }
+  .bul-header { flex-direction: column; align-items: flex-start; gap: 14px; }
+  .bul-avg-cards { width: 100%; gap: 10px; }
+  .bul-avg-card { flex: 1; padding: 14px 12px; min-width: 0; border-radius: 14px; }
+  .bul-avg-value { font-size: 22px; }
   .bul-table { font-size: 13px; min-width: 500px; }
-  .bul-table th, .bul-table td { padding: 8px 6px; }
-  .bul-appreciation { max-width: 150px; font-size: 11px; }
+  .bul-table th, .bul-table td { padding: 10px 8px; }
+  .bul-appreciation { max-width: 150px; font-size: 12px; }
   .bul-table, .bul-avg-card {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
     background: rgba(20, 25, 40, 0.92);
   }
   .bulletin-container { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .bul-export-btn { width: 100%; padding: 14px; font-size: 15px; border-radius: 14px; }
 
   /* ══ MESSAGES ══ */
   .msg-item, .msg-detail, .msg-back {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
   }
-  .msg-item { padding: 12px; border-radius: 10px; gap: 10px; }
-  .msg-avatar { width: 36px; height: 36px; font-size: 15px; }
-  .msg-sender { font-size: 13px; }
-  .msg-subject-line { font-size: 12px; }
-  .msg-detail-subject { font-size: 16px; }
-  .msg-detail-header { padding: 14px; gap: 12px; }
-  .msg-detail-avatar { width: 40px; height: 40px; font-size: 17px; }
-  .msg-detail-body { padding: 14px; font-size: 13px; }
-  .msg-detail-meta { flex-direction: column; gap: 4px; align-items: flex-start; }
+  .msg-list { gap: 10px; }
+  .msg-item { padding: 14px; border-radius: 12px; gap: 12px; }
+  .msg-avatar { width: 40px; height: 40px; font-size: 16px; }
+  .msg-sender { font-size: 14px; }
+  .msg-subject-line { font-size: 13px; }
+  .msg-detail-subject { font-size: 18px; }
+  .msg-detail-header { padding: 16px; gap: 14px; }
+  .msg-detail-avatar { width: 44px; height: 44px; font-size: 18px; }
+  .msg-detail-body { padding: 16px; font-size: 14px; line-height: 1.7; }
+  .msg-detail-meta { flex-direction: column; gap: 6px; align-items: flex-start; }
 
   /* ══ Scroll containers ══ */
   .schedule-container, .grades-container, .viescolaire-container {
