@@ -17,12 +17,13 @@
   const daError = document.getElementById("da-error");
   let pendingDAToken = null;
 
-  // ── Utilitaire Base64 ──
+  // ── Utilitaire Base64 (avec support UTF-8 pour les accents) ──
   function decodeB64(str) {
     try {
-      return atob(str);
+      const bytes = Uint8Array.from(atob(str), c => c.charCodeAt(0));
+      return new TextDecoder("utf-8").decode(bytes);
     } catch {
-      return str;
+      try { return atob(str); } catch { return str; }
     }
   }
 
@@ -136,11 +137,23 @@
     }
   }
 
-  function showDashboard(prenom, nom) {
+  function showDashboard(prenom, nom, offline) {
     hideAllPages();
     dashboardPage.classList.add("active");
     document.getElementById("student-name").textContent =
       `${prenom} ${nom}`;
+
+    // Retirer l'ancien bandeau hors-ligne s'il existe
+    const oldBanner = document.querySelector(".offline-banner");
+    if (oldBanner) oldBanner.remove();
+
+    if (offline) {
+      const banner = document.createElement("div");
+      banner.className = "offline-banner";
+      banner.innerHTML = `<span>Mode hors-ligne — EcoleDirecte est indisponible, donnees du cache</span><button class="offline-dismiss">&#10005;</button>`;
+      dashboardPage.prepend(banner);
+      banner.querySelector(".offline-dismiss").addEventListener("click", () => banner.remove());
+    }
   }
 
   // ── Navigation onglets ──
@@ -170,6 +183,9 @@
         if (target === "messages" && !Messages.rawData) {
           Messages.load();
         }
+        if (target === "bulletin") {
+          Bulletin.render();
+        }
       });
     });
   }
@@ -181,14 +197,51 @@
       const value = select.value || undefined;
       Grades.render(value);
     });
+
+    // Bulletin period selector
+    const bulSelect = document.getElementById("bulletin-period-select");
+    bulSelect.addEventListener("change", () => {
+      Bulletin.render(bulSelect.value || undefined);
+    });
+  }
+
+  // ── Mode hors-ligne : si ED est down mais qu'on a une session en cache ──
+  async function tryOfflineMode(errorMsg) {
+    // Detecter si c'est une erreur serveur ED (pas des mauvais identifiants)
+    const isServerError = errorMsg && (
+      errorMsg.includes("74000") ||
+      errorMsg.includes("connexion au serveur") ||
+      errorMsg.includes("HFSQL") ||
+      errorMsg.includes("fetch") ||
+      errorMsg.includes("network") ||
+      errorMsg.includes("500") ||
+      errorMsg.includes("502") ||
+      errorMsg.includes("503") ||
+      errorMsg.includes("504")
+    );
+    if (!isServerError) return false;
+
+    // Chercher une session sauvegardee
+    const session = await loadSession();
+    if (!session) return false;
+
+    console.log("[OFFLINE] EcoleDirecte down, basculement en mode hors-ligne");
+    API.token = session.token;
+    API.userId = session.userId;
+    showDashboard(session.prenom, session.nom, true);
+    loadDashboard();
+    return true;
   }
 
   // ── Charger le dashboard ──
   async function loadDashboard() {
-    // Charger notes en premier (bloquant pour l'affichage)
-    await Grades.load();
-    // Charger devoirs + emploi du temps + vie scolaire en parallele pour les stats
+    // Mettre les stats a 0 par defaut (au lieu de --)
+    document.getElementById("stat-homework").textContent = "0";
+    document.getElementById("stat-absences").textContent = "0";
+    // Init schedule (navigation listeners)
     Schedule.init();
+    // Charger tous les modules en parallele (cache-first dans chaque module)
+    Grades.load();
     Schedule.load();
     Homework.load();
     VieScolaire.load();
@@ -228,12 +281,16 @@
       } else if (result.needDoubleAuth) {
         pendingDAToken = result.token;
         showDoubleAuth(result.doubleAuth);
+      } else if (await tryOfflineMode(result.message)) {
+        // Mode hors-ligne active
       } else {
         loginError.textContent = result.message || "Echec de connexion";
       }
     } catch (err) {
-      loginError.textContent = "Erreur de connexion au serveur : " + err.message;
       console.error("[LOGIN] Erreur:", err);
+      if (!(await tryOfflineMode(err.message))) {
+        loginError.textContent = "Erreur de connexion au serveur : " + err.message;
+      }
     }
 
     loginBtn.disabled = false;
@@ -363,20 +420,25 @@
   // ── Theme toggle ──
   const themeToggle = document.getElementById("theme-toggle");
   const themeIcon = document.getElementById("theme-icon");
+  const themeLabel = document.getElementById("theme-label");
   const savedTheme = localStorage.getItem("edmm_theme") || "dark";
 
   function applyTheme(theme) {
     document.documentElement.setAttribute("data-theme", theme);
     themeToggle.classList.toggle("active", theme === "light");
     themeIcon.innerHTML = theme === "light" ? "&#9788;" : "&#9790;";
+    if (themeLabel) themeLabel.textContent = theme === "light" ? "Mode sombre" : "Mode clair";
     localStorage.setItem("edmm_theme", theme);
   }
 
   applyTheme(savedTheme);
 
-  document.getElementById("theme-toggle-item").addEventListener("click", () => {
+  document.getElementById("theme-toggle-item").addEventListener("click", (e) => {
+    e.preventDefault();
     const current = document.documentElement.getAttribute("data-theme") || "dark";
     applyTheme(current === "dark" ? "light" : "dark");
+    // Fermer le menu apres le changement
+    settingsMenu.classList.remove("open");
   });
 
   // ── Init ──

@@ -2,6 +2,18 @@
 const VieScolaire = {
   rawData: null,
   currentFilter: "all",
+  _lastDataHash: null,
+
+  _hashData(data) {
+    try {
+      const str = JSON.stringify(data);
+      let hash = 0;
+      for (let i = 0; i < str.length; i++) {
+        hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
+      }
+      return hash;
+    } catch { return Math.random(); }
+  },
 
   async load() {
     const container = document.getElementById("viescolaire-container");
@@ -12,6 +24,7 @@ const VieScolaire = {
     if (cached && cached.data) {
       console.log("[VIESCOLAIRE] Cache trouve, affichage immediat");
       this.rawData = cached.data;
+      this._lastDataHash = this._hashData(cached.data);
       this.render();
       this.updateStats();
     }
@@ -19,11 +32,13 @@ const VieScolaire = {
     // ── Puis fetch les donnees fraiches ──
     const result = await API.getVieScolaire();
     if (result.success) {
-      this.rawData = result.data;
-      this.render();
-      this.updateStats();
-
-      // Sauvegarder en cache (fire-and-forget)
+      const newHash = this._hashData(result.data);
+      if (newHash !== this._lastDataHash) {
+        this.rawData = result.data;
+        this._lastDataHash = newHash;
+        this.render();
+        this.updateStats();
+      }
       API.saveVieScolaireCache(result.data);
     } else if (!cached) {
       container.innerHTML = `<p class="loading">Erreur : ${result.message}</p>`;

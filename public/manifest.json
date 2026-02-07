@@ -1,12 +1,14 @@
 {
   "name": "EDMM - Ecole Direct Mais Mieux",
   "short_name": "EDMM",
-  "description": "EDMM - Notes, devoirs, emploi du temps",
+  "description": "EDMM - Notes, devoirs, emploi du temps, vie scolaire",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#0a0e1a",
   "theme_color": "#0a0e1a",
   "orientation": "any",
+  "categories": ["education"],
   "icons": [
     {
       "src": "/icons/icon-192.png",
@@ -19,6 +21,32 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Notes",
+      "short_name": "Notes",
+      "url": "/?tab=grades",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Devoirs",
+      "short_name": "Devoirs",
+      "url": "/?tab=homework",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Emploi du temps",
+      "short_name": "EDT",
+      "url": "/?tab=schedule",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Vie Scolaire",
+      "short_name": "Vie Scol.",
+      "url": "/?tab=viescolaire",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
     }
   ]
 }

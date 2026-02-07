@@ -1,4 +1,5 @@
 const express = require("express");
+const compression = require("compression");
 const fetch = require("node-fetch");
 const https = require("https");
 const path = require("path");
@@ -15,6 +16,7 @@ const API_VERSION = "4.90.1";
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 
+app.use(compression());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -570,8 +572,16 @@ app.post("/api/messages/:id", async (req, res) => {
     const data = await response.json();
     if (headerToken) data.token = headerToken;
 
+    const msgs = data.data && data.data.messages;
+    const received = msgs && msgs.received ? msgs.received : [];
+    const sent = msgs && msgs.sent ? msgs.sent : [];
+    const allMsgs = received.length > 0 ? received : sent;
     console.log("[MESSAGES] Code:", data.code, "Type:", typeRecup498 || "received",
-      "Count:", data.data && data.data.messages && data.data.messages.received ? data.data.messages.received.length : 0);
+      "Count:", allMsgs.length);
+    if (allMsgs.length > 0) {
+      console.log("[MESSAGES] Sample msg keys:", Object.keys(allMsgs[0]));
+      console.log("[MESSAGES] Sample msg:", JSON.stringify(allMsgs[0], null, 2).substring(0, 800));
+    }
     res.json(data);
   } catch (err) {
     console.error("[MESSAGES] Erreur:", err.message);

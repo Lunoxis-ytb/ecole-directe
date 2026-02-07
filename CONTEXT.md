@@ -30,39 +30,35 @@ ecole-directe-dashboard/
 
 3. **Code 250 (double auth)** : Le login renvoie `code: 250` avec un token valide (= identifiants corrects) mais demande une double authentification. → Page double auth ajoutee dans le frontend + endpoint `/api/doubleauth` dans le serveur.
 
-## BUG EN COURS — Token invalide sur doubleauth
-### Symptome
-Apres le login (code 250, token recu), l'appel a `doubleauth.awp?verbe=get` retourne `code: 520, "Token invalide !"`. Du coup la validation de la double auth echoue aussi.
+## BUG CORRIGE — Token invalide sur doubleauth (520)
+### Probleme
+Apres le login (code 250, token recu), l'appel a `doubleauth.awp?verbe=get` retournait `code: 520, "Token invalide !"`.
 
-### Ce qu'on sait
-- Le GET `login.awp?gtk=1` renvoie 2 cookies (GTK + un autre long cookie hex)
-- Le POST `login.awp` avec ces cookies + identifiants renvoie `code: 250` + un token UUID
-- Le POST `connexion/doubleauth.awp?verbe=get` avec ce token + cookies renvoie `520 Token invalide`
+### Causes identifiees et corrigees
+1. **Token dans le header** : L'API renvoie le token dans le header `x-token` de la reponse, pas seulement dans le body JSON. Le code extrait maintenant le token des deux sources (header prioritaire).
+2. **Header `2FA-Token` inexistant** : Le code envoyait un header `2FA-Token` qui n'existe pas dans l'API EcoleDirecte. Seul `X-Token` est valide. Supprime.
+3. **Version API obsolete** : Mise a jour de `4.75.0` vers `4.90.1` (version la plus recente confirmee).
+4. **Token non mis a jour** : Chaque reponse API renvoie un nouveau token. Le code suit maintenant les mises a jour du token entre chaque requete.
 
-### Pistes a explorer
-1. **Le token est peut-etre dans le header `X-Token` de la reponse login**, pas dans le body JSON. On a ajoute du logging pour verifier (`responseToken` vs `data.token`). → VERIFIER LES LOGS.
-2. **Les cookies de la reponse login** sont peut-etre importants. On log maintenant `loginCookies` pour verifier.
-3. **La reponse login pourrait definir un cookie de session** necessaire pour le doubleauth. Il faut verifier si `extractCookies(response)` capture bien tous les cookies.
-4. **Le format de l'appel doubleauth** est peut-etre different. Tester avec GET au lieu de POST, ou changer les headers.
-5. **La version API `4.75.0`** est peut-etre obsolete. Verifier la version actuelle sur le vrai site ecoledirecte.com.
+### Corrections appliquees (server.js)
+- Ajout de `extractHeaderToken()` pour lire le header `x-token`
+- Login : extrait le token du header OU du body (`headerToken || data.token`)
+- DoubleAuth GET : utilise `X-Token` uniquement, met a jour le token dans la pendingAuth Map
+- DoubleAuth POST : utilise `X-Token` au lieu de `2FA-Token`
+- Re-login apres cn/cv : extrait aussi le token du header
 
-### Commande pour tester manuellement
+### Commande pour tester
 ```bash
-# Lancer le serveur
-cd C:\Users\login\ecole-directe-dashboard
+cd C:\Users\matli\ecole-directe
 node server.js
-
-# Tester le login (les logs du serveur affichent tout)
-curl -s -X POST http://localhost:3000/api/login -H "Content-Type: application/json" -d "{\"identifiant\":\"XXXXX\",\"motdepasse\":\"XXXXX\"}"
+# Ouvrir http://localhost:3000
 ```
 
-### Logs attendus a analyser
-Le serveur log maintenant :
-- `Token body:` vs `Token header:` → lequel est le bon ?
-- `Cookies GTK:` → les 2 cookies du GET initial
-- `Cookies login:` → cookies retournes par le POST login (potentiellement vide ?)
-- `DoubleAuth GET:` → la reponse de l'API
-- `DoubleAuth GET retry:` → tentative avec cookies GTK seuls
+### Logs du serveur
+Le serveur affiche maintenant clairement :
+- `[LOGIN] Token body:` / `Token header:` / `Token utilise:` → montre d'ou vient le token
+- `[DA-GET] Code:` / `Token header:` → resultat du doubleauth GET
+- `[DA-POST] Code:` / `Reponse data:` → resultat de la soumission QCM
 
 ## Flux de login EcoleDirecte (tel qu'on le comprend)
 1. `GET login.awp?gtk=1` → recoit cookies GTK via Set-Cookie

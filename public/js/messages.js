@@ -9,12 +9,25 @@ const Messages = {
     container.innerHTML = '<p class="loading">Chargement des messages...</p>';
 
     const type = this.currentView === "sent" ? "sent" : "received";
+
+    // Cache-first : afficher le cache immédiatement
+    const cacheKey = `edmm_msg_cache_${API.userId}_${type}`;
+    try {
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        this.rawData = JSON.parse(cached);
+        this.renderList();
+      }
+    } catch {}
+
+    // Puis fetch les données fraîches
     const result = await API.getMessages(type);
 
     if (result.success) {
       this.rawData = result.data;
       this.renderList();
-    } else {
+      try { localStorage.setItem(cacheKey, JSON.stringify(result.data)); } catch {}
+    } else if (!this.rawData) {
       container.innerHTML = `<p class="loading">Erreur : ${result.message}</p>`;
     }
   },
@@ -64,9 +77,9 @@ const Messages = {
       const item = document.createElement("div");
       item.className = "msg-item" + (msg.read ? "" : " msg-unread");
 
-      const from = msg.from && msg.from.name ? msg.from.name
-        : msg.de ? msg.de
-        : msg.expediteur || "Inconnu";
+      const from = msg.from
+        ? `${msg.from.civilite ? msg.from.civilite + ' ' : ''}${msg.from.prenom || ''} ${msg.from.nom || ''}`.trim() || "Inconnu"
+        : "Inconnu";
 
       const subject = msg.subject || msg.sujet || "Sans objet";
       const date = msg.date ? this._formatDate(msg.date) : "";
@@ -153,20 +166,22 @@ const Messages = {
     this.currentMessage = result.data;
     const msg = result.data;
 
-    const from = msgMeta.from && msgMeta.from.name ? msgMeta.from.name
-      : msgMeta.de ? msgMeta.de
-      : msgMeta.expediteur || "Inconnu";
+    const from = msgMeta.from
+      ? `${msgMeta.from.civilite ? msgMeta.from.civilite + ' ' : ''}${msgMeta.from.prenom || ''} ${msgMeta.from.nom || ''}`.trim() || "Inconnu"
+      : "Inconnu";
     const subject = msgMeta.subject || msgMeta.sujet || "Sans objet";
     const date = msgMeta.date ? new Date(msgMeta.date).toLocaleDateString("fr-FR", {
       weekday: "long", day: "numeric", month: "long", year: "numeric",
       hour: "2-digit", minute: "2-digit",
     }) : "";
 
-    // Decoder le contenu (souvent en base64)
+    // Decoder le contenu base64 avec support UTF-8 (accents)
     let content = "";
     if (msg.content || msg.contenu) {
       try {
-        content = atob(msg.content || msg.contenu);
+        const raw = msg.content || msg.contenu;
+        const bytes = Uint8Array.from(atob(raw), c => c.charCodeAt(0));
+        content = new TextDecoder("utf-8").decode(bytes);
       } catch {
         content = msg.content || msg.contenu || "";
       }

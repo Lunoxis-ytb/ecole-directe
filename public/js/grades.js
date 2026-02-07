@@ -20,6 +20,20 @@ const Grades = {
     });
   },
 
+  _lastDataHash: null,
+
+  _hashData(data) {
+    // Hash rapide pour detecter les changements
+    try {
+      const str = JSON.stringify(data);
+      let hash = 0;
+      for (let i = 0; i < str.length; i++) {
+        hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
+      }
+      return hash;
+    } catch { return Math.random(); }
+  },
+
   async load() {
     const container = document.getElementById("grades-container");
     container.innerHTML = '<p class="loading">Chargement des notes...</p>';
@@ -29,6 +43,7 @@ const Grades = {
     if (cached && cached.data) {
       console.log("[GRADES] Cache trouve, affichage immediat");
       this.rawData = cached.data;
+      this._lastDataHash = this._hashData(cached.data);
       const defaultSemester = this._getDefaultSemester();
       document.getElementById("trimester-select").value = defaultSemester;
       this.render(defaultSemester);
@@ -38,20 +53,21 @@ const Grades = {
     // ── Puis fetch les donnees fraiches ──
     const result = await API.getGrades();
     if (result.success) {
-      this.rawData = result.data;
-
-      const defaultSemester = this._getDefaultSemester();
-      document.getElementById("trimester-select").value = defaultSemester;
-      this.render(defaultSemester);
-      this.initChartSubjectSelect();
-
+      const newHash = this._hashData(result.data);
+      // Eviter le re-render si les donnees sont identiques au cache
+      if (newHash !== this._lastDataHash) {
+        this.rawData = result.data;
+        this._lastDataHash = newHash;
+        const defaultSemester = this._getDefaultSemester();
+        document.getElementById("trimester-select").value = defaultSemester;
+        this.render(defaultSemester);
+        this.initChartSubjectSelect();
+      }
       // Sauvegarder en cache (fire-and-forget)
       API.saveGradesCache(result.data);
     } else if (!cached) {
-      // Pas de cache ET l'API a echoue
       container.innerHTML = `<p class="loading">Erreur : ${result.message}</p>`;
     }
-    // Si l'API echoue mais qu'on a le cache, on garde l'affichage du cache
   },
 
   _getDefaultSemester() {
@@ -164,9 +180,16 @@ const Grades = {
 
     subjectList.sort((a, b) => a.name.localeCompare(b.name));
 
-    // Mettre a jour le rang general dans les stats
+    // Mettre a jour le rang general dans les stats (couleur podium)
     const rankEl = document.getElementById("stat-rank");
-    if (rankEl) rankEl.textContent = generalRank || "N/A";
+    if (rankEl) {
+      const r = parseInt(generalRank);
+      rankEl.textContent = generalRank || "N/A";
+      rankEl.className = "stat-value";
+      if (r === 1) rankEl.classList.add("rank-gold");
+      else if (r === 2) rankEl.classList.add("rank-silver");
+      else if (r === 3) rankEl.classList.add("rank-bronze");
+    }
 
     // Build table with DocumentFragment for performance
     const table = document.createElement("table");

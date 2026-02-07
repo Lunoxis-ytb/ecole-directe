@@ -1,4 +1,4 @@
-const CACHE_NAME = "edmm-v12";
+const CACHE_NAME = "edmm-v13";
 const STATIC_ASSETS = [
   "/",
   "/css/style.css",
@@ -9,6 +9,7 @@ const STATIC_ASSETS = [
   "/js/schedule.js",
   "/js/viescolaire.js",
   "/js/messages.js",
+  "/js/bulletin.js",
   "/icons/icon-192.png",
   "/icons/icon-512.png",
 ];
@@ -56,12 +57,16 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Les requetes API : network-first avec timeout 5s + fallback cache
+  // API POST requests : toujours reseau direct (pas de cache possible pour POST)
+  if (url.pathname.startsWith("/api/") && event.request.method === "POST") {
+    return; // Laisser le navigateur gerer normalement
+  }
+
+  // API GET requests : network-first avec timeout 15s + fallback cache
   if (url.pathname.startsWith("/api/")) {
     event.respondWith(
-      fetchWithTimeout(event.request.clone(), 5000)
+      fetchWithTimeout(event.request.clone(), 15000)
         .then((response) => {
-          // Cache les reponses API reussies pour le fallback offline
           if (response.ok) {
             const clone = response.clone();
             caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));

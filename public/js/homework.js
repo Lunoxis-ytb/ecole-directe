@@ -8,6 +8,20 @@ const Homework = {
     return `hw_done_${date}_${subject}`;
   },
 
+  _lastDataHash: null,
+  _saveDoneTimer: null,
+
+  _hashData(data) {
+    try {
+      const str = JSON.stringify(data);
+      let hash = 0;
+      for (let i = 0; i < str.length; i++) {
+        hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
+      }
+      return hash;
+    } catch { return Math.random(); }
+  },
+
   async load() {
     const container = document.getElementById("homework-container");
     container.innerHTML = '<p class="loading">Chargement des devoirs...</p>';
@@ -18,6 +32,7 @@ const Homework = {
       if (cached.data && Object.keys(cached.data).length > 0) {
         console.log("[HOMEWORK] Cache trouve, affichage immediat");
         this.rawData = cached.data;
+        this._lastDataHash = this._hashData(cached.data);
         this.doneStatus = cached.done_status || {};
         this.render();
         this.updateStats();
@@ -27,11 +42,13 @@ const Homework = {
     // ── Puis fetch les donnees fraiches ──
     const result = await API.getHomework();
     if (result.success) {
-      this.rawData = result.data;
-      this.render();
-      this.updateStats();
-
-      // Sauvegarder en cache (fire-and-forget)
+      const newHash = this._hashData(result.data);
+      if (newHash !== this._lastDataHash) {
+        this.rawData = result.data;
+        this._lastDataHash = newHash;
+        this.render();
+        this.updateStats();
+      }
       API.saveHomeworkCache(result.data);
     } else if (!cached) {
       container.innerHTML = `<p class="loading">Erreur : ${result.message}</p>`;
@@ -109,20 +126,21 @@ const Homework = {
         const storageKey = this.getStorageKey(dateStr, subject);
         const isDone = !!this.doneStatus[storageKey];
 
-        // Decoder le contenu base64
+        // Decoder le contenu base64 (avec support UTF-8 pour les accents)
+        function decodeB64Utf8(str) {
+          try {
+            const bytes = Uint8Array.from(atob(str), c => c.charCodeAt(0));
+            return new TextDecoder("utf-8").decode(bytes);
+          } catch {
+            try { return atob(str); } catch { return str; }
+          }
+        }
+
         let content = "";
         if (item.aFaire && item.aFaire.contenu) {
-          try {
-            content = atob(item.aFaire.contenu);
-          } catch {
-            content = item.aFaire.contenu;
-          }
+          content = decodeB64Utf8(item.aFaire.contenu);
         } else if (item.contenu) {
-          try {
-            content = atob(item.contenu);
-          } catch {
-            content = item.contenu;
-          }
+          content = decodeB64Utf8(item.contenu);
         }
 
         // Nettoyer les tags HTML basiques
@@ -153,7 +171,11 @@ const Homework = {
           }
           itemDiv.classList.toggle("done", done);
           this.updateStats();
-          API.saveHomeworkDone(this.doneStatus);
+          // Debounce : regrouper les sauvegardes rapides
+          clearTimeout(this._saveDoneTimer);
+          this._saveDoneTimer = setTimeout(() => {
+            API.saveHomeworkDone(this.doneStatus);
+          }, 500);
         });
 
         dayDiv.appendChild(itemDiv);

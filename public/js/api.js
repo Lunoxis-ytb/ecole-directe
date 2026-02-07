@@ -278,6 +278,11 @@ const API = {
   },
 
   async saveVieScolaireCache(data) {
+    // Sauvegarder en localStorage (toujours disponible)
+    try {
+      localStorage.setItem(`edmm_vs_cache_${this.userId}`, JSON.stringify({ data, updated_at: new Date().toISOString() }));
+    } catch {}
+    // Tenter aussi Supabase (peut echouer si table absente)
     try {
       await fetch("/api/cache/viescolaire", {
         method: "POST",
@@ -290,14 +295,18 @@ const API = {
   },
 
   async loadVieScolaireCache() {
+    // D'abord Supabase
     try {
       const res = await fetch(`/api/cache/viescolaire/${this.userId}`);
       const result = await res.json();
-      return result.cached || null;
-    } catch (err) {
-      console.warn("[API] loadVieScolaireCache erreur:", err.message);
-      return null;
-    }
+      if (result.cached) return result.cached;
+    } catch {}
+    // Fallback localStorage
+    try {
+      const stored = localStorage.getItem(`edmm_vs_cache_${this.userId}`);
+      if (stored) return JSON.parse(stored);
+    } catch {}
+    return null;
   },
 
   // Recupere les messages

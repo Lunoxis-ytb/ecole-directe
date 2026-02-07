@@ -2,6 +2,18 @@
 const Schedule = {
   currentWeekStart: null,
   _initialized: false,
+  _lastRenderHash: null,
+
+  _hashData(data) {
+    try {
+      const str = JSON.stringify(data);
+      let hash = 0;
+      for (let i = 0; i < str.length; i++) {
+        hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
+      }
+      return hash;
+    } catch { return Math.random(); }
+  },
 
   init() {
     // Calculer le lundi de la semaine courante
@@ -57,6 +69,7 @@ const Schedule = {
     const cached = await API.loadScheduleCache(dateDebut);
     if (cached && cached.data) {
       console.log("[SCHEDULE] Cache trouve pour semaine", dateDebut);
+      this._lastRenderHash = this._hashData(cached.data);
       this.render(cached.data);
       currentEvents = cached.data;
     }
@@ -64,17 +77,19 @@ const Schedule = {
     // ── Puis fetch les donnees fraiches ──
     const result = await API.getSchedule(dateDebut, dateFin);
     if (result.success) {
-      this.render(result.data);
+      const newHash = this._hashData(result.data);
+      if (newHash !== this._lastRenderHash) {
+        this._lastRenderHash = newHash;
+        this.render(result.data);
+      }
       currentEvents = result.data;
-
-      // Sauvegarder en cache (fire-and-forget)
       API.saveScheduleCache(dateDebut, result.data);
     } else if (!cached) {
       container.innerHTML = `<p class="loading">Erreur : ${result.message}</p>`;
     }
 
-    // Toujours chercher le prochain cours (meme sans donnees cette semaine)
-    await this.updateNextClass(currentEvents);
+    // Chercher le prochain cours en arriere-plan
+    this.updateNextClass(currentEvents);
   },
 
   render(events) {
@@ -89,28 +104,37 @@ const Schedule = {
     const days = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi"];
     const startHour = 8;
     const endHour = 18;
-    const totalSlots = endHour - startHour;
 
-    let html = '<div class="schedule-grid">';
+    // Construire la grille avec un lookup map (evite querySelector en boucle)
+    const grid = document.createElement("div");
+    grid.className = "schedule-grid";
+    const cellMap = {}; // "day-hour" → element
 
     // Header
-    html += '<div class="schedule-header"></div>';
+    const emptyHeader = document.createElement("div");
+    emptyHeader.className = "schedule-header";
+    grid.appendChild(emptyHeader);
     for (const day of days) {
-      html += `<div class="schedule-header">${day}</div>`;
+      const h = document.createElement("div");
+      h.className = "schedule-header";
+      h.textContent = day;
+      grid.appendChild(h);
     }
 
     // Lignes horaires
     for (let h = startHour; h < endHour; h++) {
-      const label = `${h}h`;
-      html += `<div class="schedule-time">${label}</div>`;
+      const timeEl = document.createElement("div");
+      timeEl.className = "schedule-time";
+      timeEl.textContent = `${h}h`;
+      grid.appendChild(timeEl);
 
       for (let d = 0; d < 5; d++) {
-        html += `<div class="schedule-cell" data-day="${d}" data-hour="${h}"></div>`;
+        const cell = document.createElement("div");
+        cell.className = "schedule-cell";
+        cellMap[`${d}-${h}`] = cell;
+        grid.appendChild(cell);
       }
     }
-
-    html += "</div>";
-    container.innerHTML = html;
 
     // Attribuer une couleur par matiere
     const subjectColors = {};
@@ -123,7 +147,7 @@ const Schedule = {
       }
     }
 
-    // Placer les evenements
+    // Placer les evenements (lookup direct, pas de querySelector)
     for (const ev of events) {
       if (!ev.start_date && !ev.startDate) continue;
 
@@ -133,24 +157,21 @@ const Schedule = {
       const start = new Date(startStr.replace(" ", "T"));
       const end = new Date(endStr.replace(" ", "T"));
 
-      const dayIndex = start.getDay() - 1; // 0=Lundi
+      const dayIndex = start.getDay() - 1;
       if (dayIndex < 0 || dayIndex > 4) continue;
 
-      const startMinutes = start.getHours() * 60 + start.getMinutes();
       const endMinutes = end.getHours() * 60 + end.getMinutes();
+      const startMinutes = start.getHours() * 60 + start.getMinutes();
       const durationMinutes = endMinutes - startMinutes;
 
       const hourSlot = start.getHours();
       if (hourSlot < startHour || hourSlot >= endHour) continue;
 
-      // Trouver la cellule correspondante
-      const cell = container.querySelector(
-        `.schedule-cell[data-day="${dayIndex}"][data-hour="${hourSlot}"]`
-      );
+      const cell = cellMap[`${dayIndex}-${hourSlot}`];
       if (!cell) continue;
 
       const minuteOffset = start.getMinutes();
-      const topPx = minuteOffset; // 1px par minute dans une cellule de 60px
+      const topPx = minuteOffset;
       const heightPx = Math.max(durationMinutes, 25);
 
       const subject = ev.matiere || ev.text || "Cours";
@@ -173,6 +194,9 @@ const Schedule = {
       eventEl.title = `${subject}\n${room}\n${prof}`;
       cell.appendChild(eventEl);
     }
+
+    container.innerHTML = "";
+    container.appendChild(grid);
   },
 
   async updateNextClass(events) {
@@ -180,10 +204,13 @@ const Schedule = {
     const el = document.getElementById("stat-next-class");
     let nextClass = null;
 
-    // Chercher un cours futur dans les evenements
     function findNext(evList) {
       if (!evList || evList.length === 0) return;
       for (const ev of evList) {
+        // Ignorer les conges, PFMP (stages), et events annules
+        const type = (ev.typeCours || "").toUpperCase();
+        if (type === "CONGE") continue;
+        if (ev.isAnnule || ev.isCancelled) continue;
         const startStr = ev.start_date || ev.startDate;
         if (!startStr) continue;
         const start = new Date(startStr.replace(" ", "T"));
@@ -196,22 +223,39 @@ const Schedule = {
     // 1. Chercher dans les evenements de la semaine courante
     findNext(events);
 
-    // 2. Si rien, chercher jusqu'a 4 semaines en avance (vacances, etc.)
+    // 2. Si rien, chercher dans le cache + API en parallele pour les semaines futures
     if (!nextClass) {
+      const weekDates = [];
       for (let w = 1; w <= 4; w++) {
         const weekStart = new Date(this.currentWeekStart);
         weekStart.setDate(weekStart.getDate() + 7 * w);
-        const weekEnd = new Date(weekStart);
-        weekEnd.setDate(weekEnd.getDate() + 4);
+        weekDates.push(this.formatDate(weekStart));
+      }
 
-        console.log(`[SCHEDULE] Recherche prochain cours semaine +${w}:`, this.formatDate(weekStart));
-        const result = await API.getSchedule(
-          this.formatDate(weekStart),
-          this.formatDate(weekEnd)
-        );
-        if (result.success && result.data && result.data.length > 0) {
-          findNext(result.data);
+      // D'abord essayer le cache pour chaque semaine
+      const cacheResults = await Promise.all(
+        weekDates.map(ws => API.loadScheduleCache(ws))
+      );
+      for (const cached of cacheResults) {
+        if (cached && cached.data && cached.data.length > 0) {
+          findNext(cached.data);
           if (nextClass) break;
+        }
+      }
+
+      // Si toujours rien, tenter les API en parallele
+      if (!nextClass) {
+        const futures = weekDates.map((ws, i) => {
+          const weekEnd = new Date(this.currentWeekStart);
+          weekEnd.setDate(weekEnd.getDate() + 7 * (i + 1) + 4);
+          return API.getSchedule(ws, this.formatDate(weekEnd));
+        });
+        const results = await Promise.all(futures);
+        for (const result of results) {
+          if (result.success && result.data && result.data.length > 0) {
+            findNext(result.data);
+            if (nextClass) break;
+          }
         }
       }
     }
