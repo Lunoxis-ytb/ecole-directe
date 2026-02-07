@@ -343,6 +343,42 @@
     document.body.classList.add("pwa-mode");
   }
 
+  // ── Settings menu ──
+  const settingsBtn = document.getElementById("settings-btn");
+  const settingsMenu = document.getElementById("settings-menu");
+
+  settingsBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    settingsMenu.classList.toggle("open");
+  });
+
+  document.addEventListener("click", () => {
+    settingsMenu.classList.remove("open");
+  });
+
+  settingsMenu.addEventListener("click", (e) => {
+    e.stopPropagation();
+  });
+
+  // ── Theme toggle ──
+  const themeToggle = document.getElementById("theme-toggle");
+  const themeIcon = document.getElementById("theme-icon");
+  const savedTheme = localStorage.getItem("edmm_theme") || "dark";
+
+  function applyTheme(theme) {
+    document.documentElement.setAttribute("data-theme", theme);
+    themeToggle.classList.toggle("active", theme === "light");
+    themeIcon.innerHTML = theme === "light" ? "&#9788;" : "&#9790;";
+    localStorage.setItem("edmm_theme", theme);
+  }
+
+  applyTheme(savedTheme);
+
+  document.getElementById("theme-toggle-item").addEventListener("click", () => {
+    const current = document.documentElement.getAttribute("data-theme") || "dark";
+    applyTheme(current === "dark" ? "light" : "dark");
+  });
+
   // ── Init ──
   initTabs();
   initTrimesterSelect();

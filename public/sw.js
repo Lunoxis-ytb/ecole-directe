@@ -1,4 +1,4 @@
-const CACHE_NAME = "edmm-v11";
+const CACHE_NAME = "edmm-v12";
 const STATIC_ASSETS = [
   "/",
   "/css/style.css",

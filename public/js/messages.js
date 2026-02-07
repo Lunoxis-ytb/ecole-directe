@@ -38,13 +38,22 @@ const Messages = {
 
     const fragment = document.createDocumentFragment();
 
-    // Tabs inbox/sent
+    // Tabs inbox/sent (styled as pills)
     const tabs = document.createElement("div");
     tabs.className = "msg-tabs";
-    tabs.innerHTML = `
-      <button class="msg-tab${this.currentView === "inbox" ? " active" : ""}" data-view="inbox">Recus</button>
-      <button class="msg-tab${this.currentView === "sent" ? " active" : ""}" data-view="sent">Envoyes</button>
-    `;
+
+    const inboxTab = document.createElement("button");
+    inboxTab.className = "msg-tab" + (this.currentView === "inbox" ? " active" : "");
+    inboxTab.dataset.view = "inbox";
+    inboxTab.textContent = "Reçus";
+    tabs.appendChild(inboxTab);
+
+    const sentTab = document.createElement("button");
+    sentTab.className = "msg-tab" + (this.currentView === "sent" ? " active" : "");
+    sentTab.dataset.view = "sent";
+    sentTab.textContent = "Envoyés";
+    tabs.appendChild(sentTab);
+
     fragment.appendChild(tabs);
 
     // Liste des messages
@@ -53,27 +62,61 @@ const Messages = {
 
     for (const msg of messages) {
       const item = document.createElement("div");
-      item.className = `msg-item${msg.read ? "" : " msg-unread"}`;
+      item.className = "msg-item" + (msg.read ? "" : " msg-unread");
 
       const from = msg.from && msg.from.name ? msg.from.name
         : msg.de ? msg.de
         : msg.expediteur || "Inconnu";
 
       const subject = msg.subject || msg.sujet || "Sans objet";
-      const date = msg.date ? new Date(msg.date).toLocaleDateString("fr-FR", {
-        day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
-      }) : "";
-
+      const date = msg.date ? this._formatDate(msg.date) : "";
       const preview = msg.preview || msg.apercu || "";
 
-      item.innerHTML = `
-        <div class="msg-header-row">
-          <span class="msg-from">${this._escapeHtml(from)}</span>
-          <span class="msg-date">${date}</span>
-        </div>
-        <div class="msg-subject">${this._escapeHtml(subject)}</div>
-        ${preview ? `<div class="msg-preview">${this._escapeHtml(preview)}</div>` : ""}
-      `;
+      // Create initial circle
+      const initial = from.charAt(0).toUpperCase();
+      const color = this._getColorForName(from);
+
+      const avatarCircle = document.createElement("div");
+      avatarCircle.className = "msg-avatar";
+      avatarCircle.style.backgroundColor = color;
+      avatarCircle.textContent = initial;
+
+      // Create content wrapper
+      const contentWrapper = document.createElement("div");
+      contentWrapper.className = "msg-content";
+
+      // Sender name
+      const senderEl = document.createElement("div");
+      senderEl.className = "msg-sender";
+      senderEl.textContent = from;
+
+      // Subject
+      const subjectEl = document.createElement("div");
+      subjectEl.className = "msg-subject-line";
+      subjectEl.textContent = subject;
+
+      // Preview (if exists)
+      if (preview) {
+        const previewEl = document.createElement("div");
+        previewEl.className = "msg-preview";
+        previewEl.textContent = preview;
+        contentWrapper.appendChild(senderEl);
+        contentWrapper.appendChild(subjectEl);
+        contentWrapper.appendChild(previewEl);
+      } else {
+        contentWrapper.appendChild(senderEl);
+        contentWrapper.appendChild(subjectEl);
+      }
+
+      // Date on the right
+      const dateEl = document.createElement("div");
+      dateEl.className = "msg-date";
+      dateEl.textContent = date;
+
+      // Assemble the item
+      item.appendChild(avatarCircle);
+      item.appendChild(contentWrapper);
+      item.appendChild(dateEl);
 
       item.addEventListener("click", () => {
         this.openMessage(msg.id, msg);
@@ -139,23 +182,61 @@ const Messages = {
     // Bouton retour
     const backBtn = document.createElement("button");
     backBtn.className = "msg-back";
-    backBtn.textContent = "< Retour";
+    backBtn.textContent = "← Retour";
     backBtn.addEventListener("click", () => this.renderList());
     fragment.appendChild(backBtn);
 
     // Message complet
     const msgDiv = document.createElement("div");
     msgDiv.className = "msg-detail";
-    msgDiv.innerHTML = `
-      <div class="msg-detail-header">
-        <h3 class="msg-detail-subject">${this._escapeHtml(subject)}</h3>
-        <div class="msg-detail-meta">
-          <span class="msg-detail-from">${this._escapeHtml(from)}</span>
-          <span class="msg-detail-date">${date}</span>
-        </div>
-      </div>
-      <div class="msg-detail-body">${cleanContent || "<em>Message vide</em>"}</div>
-    `;
+
+    // Header with avatar
+    const detailHeader = document.createElement("div");
+    detailHeader.className = "msg-detail-header";
+
+    // Avatar circle for detail view
+    const initial = from.charAt(0).toUpperCase();
+    const color = this._getColorForName(from);
+    const avatarCircle = document.createElement("div");
+    avatarCircle.className = "msg-detail-avatar";
+    avatarCircle.style.backgroundColor = color;
+    avatarCircle.textContent = initial;
+
+    const headerContent = document.createElement("div");
+    headerContent.className = "msg-detail-header-content";
+
+    const subjectH3 = document.createElement("h3");
+    subjectH3.className = "msg-detail-subject";
+    subjectH3.textContent = subject;
+
+    const metaDiv = document.createElement("div");
+    metaDiv.className = "msg-detail-meta";
+
+    const fromSpan = document.createElement("span");
+    fromSpan.className = "msg-detail-from";
+    fromSpan.textContent = from;
+
+    const dateSpan = document.createElement("span");
+    dateSpan.className = "msg-detail-date";
+    dateSpan.textContent = date;
+
+    metaDiv.appendChild(fromSpan);
+    metaDiv.appendChild(dateSpan);
+
+    headerContent.appendChild(subjectH3);
+    headerContent.appendChild(metaDiv);
+
+    detailHeader.appendChild(avatarCircle);
+    detailHeader.appendChild(headerContent);
+
+    msgDiv.appendChild(detailHeader);
+
+    // Body content (using innerHTML for HTML content from API)
+    const bodyDiv = document.createElement("div");
+    bodyDiv.className = "msg-detail-body";
+    bodyDiv.innerHTML = cleanContent || "<em>Message vide</em>";
+
+    msgDiv.appendChild(bodyDiv);
     fragment.appendChild(msgDiv);
 
     // Pièces jointes
@@ -163,7 +244,12 @@ const Messages = {
     if (files.length > 0) {
       const attachDiv = document.createElement("div");
       attachDiv.className = "msg-attachments";
-      attachDiv.innerHTML = `<div class="msg-attach-label">Pieces jointes (${files.length})</div>`;
+
+      const labelDiv = document.createElement("div");
+      labelDiv.className = "msg-attach-label";
+      labelDiv.textContent = `Pièces jointes (${files.length})`;
+      attachDiv.appendChild(labelDiv);
+
       for (const f of files) {
         const name = f.libelle || f.nom || "Fichier";
         const link = document.createElement("div");
@@ -176,6 +262,45 @@ const Messages = {
 
     container.innerHTML = "";
     container.appendChild(fragment);
+  },
+
+  // Hash name to deterministic color
+  _getColorForName(name) {
+    const colors = [
+      "#1abc9c", "#2ecc71", "#3498db", "#9b59b6", "#34495e",
+      "#16a085", "#27ae60", "#2980b9", "#8e44ad", "#2c3e50",
+      "#f39c12", "#e67e22", "#e74c3c", "#c0392b", "#d35400"
+    ];
+
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) {
+      hash = name.charCodeAt(i) + ((hash << 5) - hash);
+      hash = hash & hash; // Convert to 32bit integer
+    }
+
+    const index = Math.abs(hash) % colors.length;
+    return colors[index];
+  },
+
+  // Format date in Gmail style (short for today/yesterday, otherwise date)
+  _formatDate(dateStr) {
+    const msgDate = new Date(dateStr);
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const msgDay = new Date(msgDate.getFullYear(), msgDate.getMonth(), msgDate.getDate());
+
+    const diffDays = Math.floor((today - msgDay) / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 0) {
+      // Today: show time
+      return msgDate.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+    } else if (diffDays < 7) {
+      // This week: show day name
+      return msgDate.toLocaleDateString("fr-FR", { weekday: "short" });
+    } else {
+      // Older: show date
+      return msgDate.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+    }
   },
 
   _escapeHtml(str) {
