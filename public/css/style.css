@@ -961,17 +961,26 @@ select option {
   .btn-logout { padding: 6px 12px; font-size: 11px; }
   .header-left { gap: 8px; }
 
-  /* ══ STATS BAR — 2 colonnes, plus aere ══ */
+  /* ══ STATS BAR — swipe horizontal ══ */
   .stats-bar {
-    grid-template-columns: repeat(2, 1fr);
-    padding: 12px;
+    display: flex;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+    padding: 12px 14px;
     gap: 10px;
   }
 
+  .stats-bar::-webkit-scrollbar { display: none; }
+
   .stat-card {
+    flex: 0 0 auto;
+    width: 130px;
     padding: 14px 12px;
     gap: 4px;
     border-radius: 12px;
+    scroll-snap-align: start;
   }
 
   .stat-value { font-size: 22px; }
