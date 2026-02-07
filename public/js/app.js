@@ -286,10 +286,6 @@
       Grades.chart.destroy();
       Grades.chart = null;
     }
-    if (Grades.classChart) {
-      Grades.classChart.destroy();
-      Grades.classChart = null;
-    }
     showLogin();
   });
 

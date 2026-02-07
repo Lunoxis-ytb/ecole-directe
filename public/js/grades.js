@@ -93,8 +93,9 @@ const Grades = {
       subjects[key].notes.push(note);
     }
 
-    // Recuperer les rangs par matiere depuis les periodes
+    // Recuperer les rangs + min/max classe par matiere depuis les periodes
     const ranksMap = {};
+    const classMinMax = {}; // { codeMatiere: { min, max } }
     let generalRank = null;
     if (data.periodes && semesterFilter) {
       const periode = data.periodes.find((p) => p.codePeriode === semesterFilter);
@@ -104,16 +105,24 @@ const Grades = {
           if (rank != null && rank !== "" && rank !== 0) {
             ranksMap[disc.codeMatiere] = rank;
           }
+          // Min/Max classe (meilleure et pire moyenne de la classe)
+          const cMin = disc.moyenneMin || disc.moyenneBasse;
+          const cMax = disc.moyenneMax || disc.moyenneHaute;
+          if (cMin || cMax) {
+            classMinMax[disc.codeMatiere] = {
+              min: cMin ? parseFloat(String(cMin).replace(",", ".")) : null,
+              max: cMax ? parseFloat(String(cMax).replace(",", ".")) : null,
+            };
+          }
         }
       }
-      // Rang general - recherche exhaustive dans tous les champs possibles
+      // Rang general
       if (periode) {
         const em = periode.ensembleMatieres || {};
         generalRank = periode.rangEleve || periode.rang || periode.classement
           || em.rangEleve || em.rang || em.classement || em.rangGeneral
           || null;
 
-        // Fallback : chercher dans disciplines une entree "ensemble" (codeMatiere vide ou sous-matiere false)
         if (!generalRank && em.disciplines) {
           for (const disc of em.disciplines) {
             if (disc.sousMatiere === false || disc.codeMatiere === "" || disc.id === 0) {
@@ -122,15 +131,6 @@ const Grades = {
             }
           }
         }
-
-        console.log("[GRADES] Rank debug:", JSON.stringify({
-          "periode.rangEleve": periode.rangEleve,
-          "periode.rang": periode.rang,
-          "em.rangEleve": em.rangEleve,
-          "em.rang": em.rang,
-          "found": generalRank,
-          "emKeys": Object.keys(em).filter(k => k !== "disciplines"),
-        }));
       }
     }
 
@@ -144,9 +144,21 @@ const Grades = {
         0
       );
       s.avg = validNotes.length > 0 ? (sum / validNotes.length).toFixed(2) : "--";
-      // Chercher le rang par code matiere
       const codeMatiere = s.notes[0] ? s.notes[0].codeMatiere : null;
       s.rank = codeMatiere && ranksMap[codeMatiere] ? ranksMap[codeMatiere] : "--";
+
+      // Min/Max classe pour la matiere (fallback sur mes propres notes)
+      const myValues = validNotes.map((n) => (parseFloat(n.valeur) / parseFloat(n.noteSur)) * 20);
+      const classData = codeMatiere && classMinMax[codeMatiere];
+      if (classData && (classData.min !== null || classData.max !== null)) {
+        s.min = classData.min !== null ? classData.min.toFixed(1) : (myValues.length > 0 ? Math.min(...myValues).toFixed(1) : "--");
+        s.max = classData.max !== null ? classData.max.toFixed(1) : (myValues.length > 0 ? Math.max(...myValues).toFixed(1) : "--");
+        s.minMaxIsClass = true;
+      } else {
+        s.min = myValues.length > 0 ? Math.min(...myValues).toFixed(1) : "--";
+        s.max = myValues.length > 0 ? Math.max(...myValues).toFixed(1) : "--";
+        s.minMaxIsClass = false;
+      }
       return s;
     });
 
@@ -159,8 +171,12 @@ const Grades = {
     // Build table with DocumentFragment for performance
     const table = document.createElement("table");
     table.className = "grades-table";
+    // Determine si on a des donnees classe pour l'en-tete
+    const hasClassMinMax = subjectList.some((s) => s.minMaxIsClass);
+    const minLabel = hasClassMinMax ? "Min classe" : "Min";
+    const maxLabel = hasClassMinMax ? "Max classe" : "Max";
     table.innerHTML = `<thead><tr>
-      <th>Matiere</th><th>Moyenne</th><th>Rang</th><th>Nb notes</th><th>Min</th><th>Max</th>
+      <th>Matiere</th><th>Moyenne</th><th>Rang</th><th>Nb notes</th><th>${minLabel}</th><th>${maxLabel}</th>
     </tr></thead>`;
 
     const tbody = document.createElement("tbody");
@@ -170,18 +186,15 @@ const Grades = {
       const avgNum = parseFloat(s.avg);
       const avgClass =
         isNaN(avgNum) ? "" : avgNum >= 14 ? "avg-good" : avgNum >= 10 ? "avg-mid" : "avg-bad";
-
-      const validNotes = s.notes.filter((n) => !isNaN(parseFloat(n.valeur)));
-      const values = validNotes.map(
-        (n) => (parseFloat(n.valeur) / parseFloat(n.noteSur)) * 20
-      );
-      const min = values.length > 0 ? Math.min(...values).toFixed(1) : "--";
-      const max = values.length > 0 ? Math.max(...values).toFixed(1) : "--";
+      const minNum = parseFloat(s.min);
+      const maxNum = parseFloat(s.max);
+      const minClass = isNaN(minNum) ? "" : minNum >= 14 ? "avg-good" : minNum >= 10 ? "avg-mid" : "avg-bad";
+      const maxClass = isNaN(maxNum) ? "" : maxNum >= 14 ? "avg-good" : maxNum >= 10 ? "avg-mid" : "avg-bad";
 
       const row = document.createElement("tr");
       row.className = "subject-row";
       row.dataset.subject = s.name;
-      row.innerHTML = `<td>${s.name}</td><td class="${avgClass}">${s.avg}</td><td class="rank-cell">${s.rank}</td><td>${s.notes.length}</td><td>${min}</td><td>${max}</td>`;
+      row.innerHTML = `<td>${s.name}</td><td class="${avgClass}">${s.avg}</td><td class="rank-cell">${s.rank}</td><td>${s.notes.length}</td><td class="${minClass}">${s.min}</td><td class="${maxClass}">${s.max}</td>`;
 
       row.addEventListener("click", () => {
         const details = tbody.querySelectorAll(`.grade-detail[data-subject="${s.name}"]`);
@@ -192,11 +205,16 @@ const Grades = {
 
       for (const n of s.notes) {
         const dateStr = n.date ? new Date(n.date).toLocaleDateString("fr-FR") : "";
+        // Min/Max de l'eval (note la plus basse et haute de la classe sur cette eval)
+        const evalMin = n.minClasse || n.noteMin;
+        const evalMax = n.maxClasse || n.noteMax;
+        const evalMinStr = evalMin ? String(evalMin).replace(",", ".") : "--";
+        const evalMaxStr = evalMax ? String(evalMax).replace(",", ".") : "--";
         const detail = document.createElement("tr");
         detail.className = "grade-detail";
         detail.dataset.subject = s.name;
         detail.style.display = "none";
-        detail.innerHTML = `<td>${n.devoir || ""}</td><td>${n.valeur}/${n.noteSur}</td><td>${dateStr}</td><td colspan="3">${n.commentaire || ""}</td>`;
+        detail.innerHTML = `<td>${n.devoir || ""}</td><td>${n.valeur}/${n.noteSur}</td><td>${dateStr}</td><td></td><td>${evalMinStr}</td><td>${evalMaxStr}</td>`;
         fragment.appendChild(detail);
       }
     }
@@ -209,14 +227,11 @@ const Grades = {
     // Graphiques (lazy load Chart.js)
     this.ensureChartJs().then(() => {
       this.renderLineChart();
-      this.renderClassChart();
     }).catch((err) => console.warn("[GRADES] Chart.js non disponible:", err.message));
   },
 
   // Remplir le selecteur de matieres pour le graphique
   _chartSelectBound: false,
-  _showClassAvg: true,
-  _classAvgMode: "running", // "running" ou "fixed"
 
   initChartSubjectSelect() {
     const select = document.getElementById("chart-subject-select");
@@ -230,39 +245,17 @@ const Grades = {
       }
     }
 
-    // Garder "Moyenne generale" comme premier choix
     select.innerHTML = '<option value="">Toutes matieres</option>';
     const sorted = [...subjects.entries()].sort((a, b) => a[1].localeCompare(b[1]));
     for (const [code, name] of sorted) {
       select.innerHTML += `<option value="${code}">${name}</option>`;
     }
 
-    // Eviter d'empiler des listeners a chaque appel
     if (!this._chartSelectBound) {
       this._chartSelectBound = true;
       select.addEventListener("change", () => {
         this.renderLineChart(select.value || null);
       });
-
-      // Pill Classe : toggle on/off
-      const pillClasse = document.getElementById("pill-classe");
-      if (pillClasse) {
-        pillClasse.addEventListener("click", () => {
-          this._showClassAvg = !this._showClassAvg;
-          pillClasse.classList.toggle("active", this._showClassAvg);
-          this.renderLineChart(select.value || null);
-        });
-      }
-
-      // Pill Mode : toggle running/fixed
-      const pillMode = document.getElementById("pill-mode");
-      if (pillMode) {
-        pillMode.addEventListener("click", () => {
-          this._classAvgMode = this._classAvgMode === "running" ? "fixed" : "running";
-          pillMode.textContent = this._classAvgMode === "running" ? "Fixe" : "Glissante";
-          this.renderLineChart(select.value || null);
-        });
-      }
     }
   },
 
@@ -303,7 +296,7 @@ const Grades = {
     return classAvg ? parseFloat(String(classAvg).replace(",", ".")) : null;
   },
 
-  // Graphique 1 : Evolution de ma moyenne + moyenne classe
+  // Graphique : Evolution de ma moyenne + notes + moyenne classe (glissante)
   renderLineChart(subjectFilter) {
     const canvas = document.getElementById("grades-chart");
     if (!canvas) return;
@@ -335,7 +328,7 @@ const Grades = {
     const noteDetails = [];
     let runningSum = 0;
 
-    // Moyenne classe glissante : calculer a partir des moyenneClasse de chaque note
+    // Moyenne classe glissante
     const classRunningData = [];
     let classRunningSum = 0;
     let classRunningCount = 0;
@@ -357,7 +350,6 @@ const Grades = {
         sur20: valRounded,
       });
 
-      // Moyenne classe glissante
       if (n.moyenneClasse) {
         const classVal = parseFloat(String(n.moyenneClasse).replace(",", "."));
         if (!isNaN(classVal)) {
@@ -368,16 +360,16 @@ const Grades = {
       classRunningData.push(classRunningCount > 0 ? parseFloat((classRunningSum / classRunningCount).toFixed(2)) : null);
     }
 
-    // Moyenne classe fixe (du semestre)
+    // Fallback : moyenne classe fixe si pas de donnees glissantes
     const fixedClassAvg = this._getClassAvgForSubject(subjectFilter);
 
-    // Gradient bleu sous la courbe
+    // Gradient
     const h = canvas.parentElement ? canvas.parentElement.clientHeight : 300;
     const gradient = ctx.createLinearGradient(0, 0, 0, h);
     gradient.addColorStop(0, "rgba(79, 140, 255, 0.20)");
     gradient.addColorStop(1, "rgba(79, 140, 255, 0)");
 
-    // Datasets
+    // Datasets : toujours 3 (Ma moyenne, Notes, Classe)
     const datasets = [
       {
         label: "Ma moyenne",
@@ -398,6 +390,8 @@ const Grades = {
         label: "Notes",
         data: individualData,
         showLine: false,
+        borderColor: "#e2e8f0",
+        backgroundColor: "#e2e8f0",
         pointRadius: 5,
         pointHoverRadius: 8,
         pointBackgroundColor: individualData.map(v =>
@@ -410,55 +404,41 @@ const Grades = {
       },
     ];
 
-    // Ajouter la courbe classe si activee
-    if (this._showClassAvg) {
-      if (this._classAvgMode === "running") {
-        // Moyenne classe glissante
-        const hasClassData = classRunningData.some(v => v !== null);
-        if (hasClassData) {
-          datasets.push({
-            label: "Classe (glissante)",
-            data: classRunningData,
-            borderColor: "#a78bfa",
-            borderWidth: 2,
-            borderDash: [6, 3],
-            pointRadius: 0,
-            pointHoverRadius: 4,
-            pointBackgroundColor: "#a78bfa",
-            tension: 0.35,
-            fill: false,
-          });
-        } else if (fixedClassAvg) {
-          // Fallback vers ligne fixe si pas de donnees glissantes
-          datasets.push({
-            label: "Classe",
-            data: labels.map(() => fixedClassAvg),
-            borderColor: "#a78bfa",
-            borderWidth: 2,
-            borderDash: [6, 3],
-            pointRadius: 0,
-            pointHoverRadius: 0,
-            tension: 0,
-            fill: false,
-          });
-        }
-      } else {
-        // Ligne fixe horizontale
-        if (fixedClassAvg) {
-          datasets.push({
-            label: "Classe (semestre)",
-            data: labels.map(() => fixedClassAvg),
-            borderColor: "#a78bfa",
-            borderWidth: 2,
-            borderDash: [8, 4],
-            pointRadius: 0,
-            pointHoverRadius: 0,
-            tension: 0,
-            fill: false,
-          });
-        }
-      }
+    // Toujours ajouter la courbe classe (glissante, fallback fixe)
+    const hasClassData = classRunningData.some(v => v !== null);
+    if (hasClassData) {
+      datasets.push({
+        label: "Classe",
+        data: classRunningData,
+        borderColor: "#a78bfa",
+        borderWidth: 2,
+        borderDash: [6, 3],
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        pointBackgroundColor: "#a78bfa",
+        tension: 0.35,
+        fill: false,
+      });
+    } else if (fixedClassAvg) {
+      datasets.push({
+        label: "Classe",
+        data: labels.map(() => fixedClassAvg),
+        borderColor: "#a78bfa",
+        borderWidth: 2,
+        borderDash: [6, 3],
+        pointRadius: 0,
+        pointHoverRadius: 0,
+        tension: 0,
+        fill: false,
+      });
     }
+
+    // Couleurs pour les pills de legende
+    const legendColors = {
+      "Ma moyenne": "#4f8cff",
+      "Notes": "#9aa0b0",
+      "Classe": "#a78bfa",
+    };
 
     this.chart = new Chart(canvas, {
       type: "line",
@@ -471,8 +451,18 @@ const Grades = {
         plugins: {
           legend: {
             display: true,
-            labels: { color: "#9aa0b0", usePointStyle: true, padding: 16, font: { size: 11 } },
+            labels: {
+              color: "#9aa0b0",
+              usePointStyle: true,
+              pointStyle: "circle",
+              padding: 20,
+              font: { size: 12, weight: "500" },
+            },
+            onHover(e) { e.native.target.style.cursor = "pointer"; },
+            onLeave(e) { e.native.target.style.cursor = "default"; },
           },
+          // Plugin custom pour dessiner des pills autour de chaque item de legende
+          legendPillPlugin: true,
           tooltip: {
             backgroundColor: "rgba(10, 14, 26, 0.95)",
             titleColor: "#f0f2f5",
@@ -492,7 +482,7 @@ const Grades = {
                   return `Note: ${d.valeur}/${d.noteSur}${parseFloat(d.noteSur) !== 20 ? ` (${d.sur20}/20)` : ""}`;
                 }
                 if (ctx.dataset.label === "Ma moyenne") return `Ma moyenne: ${ctx.parsed.y}/20`;
-                if (ctx.dataset.label.startsWith("Classe")) return `Classe: ${ctx.parsed.y}/20`;
+                if (ctx.dataset.label === "Classe") return `Classe: ${ctx.parsed.y}/20`;
                 return null;
               },
               afterBody(ctx) {
@@ -515,116 +505,52 @@ const Grades = {
           },
         },
       },
-    });
-  },
+      plugins: [{
+        // Plugin : dessiner des pills arrondis autour de chaque item de legende
+        id: "legendPills",
+        afterDraw(chart) {
+          const legend = chart.legend;
+          if (!legend || !legend.legendItems) return;
+          const ctx = chart.ctx;
 
-  // Graphique 2 : Comparaison Moi vs Classe par matiere (barres horizontales)
-  classChart: null,
+          for (let i = 0; i < legend.legendItems.length; i++) {
+            const item = legend.legendItems[i];
+            const hitBox = legend.legendHitBoxes[i];
+            if (!hitBox) continue;
 
-  renderClassChart() {
-    const canvas = document.getElementById("class-chart");
-    if (!canvas) return;
+            const x = hitBox.left - 6;
+            const y = hitBox.top - 4;
+            const w = hitBox.width + 12;
+            const h = hitBox.height + 8;
+            const r = h / 2;
 
-    if (this.classChart) this.classChart.destroy();
+            // Fond pill
+            const color = item.strokeStyle || item.fillStyle || "#9aa0b0";
+            const hidden = item.hidden;
 
-    const data = this.rawData;
-    if (!data || !data.periodes) { this.classChart = null; return; }
-
-    const periode = data.periodes.find((p) => p.codePeriode === this.currentSemester);
-    if (!periode || !periode.ensembleMatieres || !periode.ensembleMatieres.disciplines) {
-      this.classChart = null;
-      return;
-    }
-
-    const subjects = [];
-    const myAvgs = [];
-    const classAvgs = [];
-
-    for (const disc of periode.ensembleMatieres.disciplines) {
-      const myAvg = disc.moyenne || disc.moyenneEleve;
-      const clAvg = disc.moyenneClasse;
-      if (!myAvg || !clAvg) continue;
-
-      const myVal = parseFloat(String(myAvg).replace(",", "."));
-      const clVal = parseFloat(String(clAvg).replace(",", "."));
-      if (isNaN(myVal) || isNaN(clVal)) continue;
-
-      // Nom court pour les labels
-      let name = disc.discipline || disc.libelleMatiere || disc.codeMatiere || "";
-      if (name.length > 16) name = name.substring(0, 14) + "..";
-
-      subjects.push(name);
-      myAvgs.push(myVal);
-      classAvgs.push(clVal);
-    }
-
-    if (subjects.length === 0) { this.classChart = null; return; }
-
-    this.classChart = new Chart(canvas, {
-      type: "bar",
-      data: {
-        labels: subjects,
-        datasets: [
-          {
-            label: "Moi",
-            data: myAvgs,
-            backgroundColor: "rgba(79, 140, 255, 0.7)",
-            borderColor: "#4f8cff",
-            borderWidth: 1,
-            borderRadius: 4,
-            barPercentage: 0.7,
-            categoryPercentage: 0.8,
-          },
-          {
-            label: "Classe",
-            data: classAvgs,
-            backgroundColor: "rgba(139, 92, 246, 0.5)",
-            borderColor: "#8b5cf6",
-            borderWidth: 1,
-            borderRadius: 4,
-            barPercentage: 0.7,
-            categoryPercentage: 0.8,
-          },
-        ],
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        indexAxis: "y",
-        animation: { duration: 800, easing: "easeOutQuart" },
-        plugins: {
-          legend: {
-            display: true,
-            labels: { color: "#9aa0b0", usePointStyle: true, padding: 16, font: { size: 11 } },
-          },
-          tooltip: {
-            backgroundColor: "rgba(10, 14, 26, 0.95)",
-            titleColor: "#f0f2f5",
-            bodyColor: "#f0f2f5",
-            borderColor: "rgba(79, 140, 255, 0.2)",
-            borderWidth: 1,
-            padding: 12,
-            cornerRadius: 8,
-            callbacks: {
-              label(ctx) {
-                return `${ctx.dataset.label}: ${ctx.parsed.x}/20`;
-              },
-            },
-          },
+            ctx.save();
+            ctx.beginPath();
+            ctx.roundRect(x, y, w, h, r);
+            if (hidden) {
+              ctx.fillStyle = "rgba(255, 255, 255, 0.03)";
+              ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
+            } else {
+              // Extraire la couleur et l'appliquer avec transparence
+              ctx.fillStyle = color.replace(")", ", 0.12)").replace("rgb(", "rgba(").replace("#", "");
+              // Fallback pour les couleurs hex
+              if (ctx.fillStyle.includes("#")) {
+                ctx.fillStyle = `${color}1F`; // ~12% opacity
+              }
+              ctx.strokeStyle = color;
+              ctx.globalAlpha = 0.6;
+            }
+            ctx.lineWidth = 1;
+            ctx.fill();
+            ctx.stroke();
+            ctx.restore();
+          }
         },
-        scales: {
-          x: {
-            beginAtZero: true,
-            max: 20,
-            grid: { color: "rgba(255,255,255,0.04)" },
-            ticks: { color: "#9aa0b0", font: { size: 11 }, stepSize: 4 },
-          },
-          y: {
-            grid: { display: false },
-            ticks: { color: "#9aa0b0", font: { size: 11 } },
-          },
-        },
-      },
+      }],
     });
   },
 
