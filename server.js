@@ -31,25 +31,27 @@ const BROWSER_HEADERS = {
   "Sec-Ch-Ua-Platform": '"Windows"',
 };
 
-// Utilitaire : fetch avec retry automatique (HFSQL errors, etc.)
-async function fetchWithRetry(url, options, maxRetries = 3) {
+// Utilitaire : fetch ED avec retry (retourne directement le JSON parse)
+async function edFetch(url, options, maxRetries = 2) {
+  let lastRes, lastData;
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    const res = await fetch(url, options);
-    const cloned = res.clone();
-    try {
-      const body = await cloned.json();
-      // Si erreur HFSQL / serveur interne ED, on retry
-      if (body.code && body.code !== 200 && body.code !== 250 &&
-          body.message && (body.message.includes("HFSQL") || body.message.includes("connexion au serveur") || body.message.includes("74000"))) {
-        console.log(`[RETRY] Tentative ${attempt}/${maxRetries} - Erreur ED: ${body.message.substring(0, 80)}`);
-        if (attempt < maxRetries) {
-          await new Promise(r => setTimeout(r, 1500 * attempt));
-          continue;
-        }
+    lastRes = await fetch(url, options);
+    const headerToken = extractHeaderToken(lastRes);
+    lastData = await lastRes.json();
+    if (headerToken) lastData._headerToken = headerToken;
+    // Si erreur HFSQL / serveur interne ED → retry
+    const msg = lastData.message || "";
+    if (lastData.code && lastData.code !== 200 && lastData.code !== 250 &&
+        (msg.includes("HFSQL") || msg.includes("connexion au serveur") || msg.includes("74000"))) {
+      console.log(`[RETRY] ${attempt}/${maxRetries} - ${msg.substring(0, 80)}`);
+      if (attempt < maxRetries) {
+        await new Promise(r => setTimeout(r, 800));
+        continue;
       }
-    } catch {}
-    return res;
+    }
+    break;
   }
+  return lastData;
 }
 
 app.use(compression());
@@ -240,16 +242,11 @@ async function getGtkCookies() {
 }
 
 // ── POST /api/login — authentification ──
-app.post("/api/login", async (req, res) => {
-  try {
-    const { identifiant, motdepasse, fa } = req.body;
-
-    // Etape 1 : GTK
+// Fonction login interne (avec retry integre car GTK doit etre renouvele a chaque tentative)
+async function doLogin(identifiant, motdepasse, fa, maxRetries = 2) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
     const { cookies, gtkValue } = await getGtkCookies();
-
-    // Etape 2 : POST login
-    console.log("[LOGIN] Envoi authentification...");
-    const response = await fetchWithRetry(
+    const response = await fetch(
       `${API_BASE}/login.awp?v=${API_VERSION}`,
       {
         method: "POST",
@@ -275,92 +272,87 @@ app.post("/api/login", async (req, res) => {
     const allCookies = [...cookies, ...loginCookies];
     const headerToken = extractHeaderToken(response);
     const data = await response.json();
-
-    // Le token peut etre dans le header x-token OU dans le body JSON
     const token = headerToken || data.token;
 
-    console.log("[LOGIN] Code:", data.code, "Message:", data.message);
-    console.log("[LOGIN] Token body:", data.token ? data.token.substring(0, 20) + "..." : "vide");
-    console.log("[LOGIN] Token header:", headerToken ? headerToken.substring(0, 20) + "..." : "vide");
-    console.log("[LOGIN] Token utilise:", token ? token.substring(0, 20) + "..." : "AUCUN");
-    console.log("[LOGIN] Cookies login:", loginCookies.length);
+    // Si erreur HFSQL → retry avec nouveau GTK
+    const msg = data.message || "";
+    if (data.code !== 200 && data.code !== 250 &&
+        (msg.includes("HFSQL") || msg.includes("connexion au serveur") || msg.includes("74000"))) {
+      console.log(`[LOGIN] HFSQL retry ${attempt}/${maxRetries}: ${msg.substring(0, 60)}`);
+      if (attempt < maxRetries) {
+        await new Promise(r => setTimeout(r, 800));
+        continue;
+      }
+    }
+
+    if (token && token !== data.token) data.token = token;
+    return { data, token, allCookies, cookies, gtkValue };
+  }
+}
+
+app.post("/api/login", async (req, res) => {
+  try {
+    const { identifiant, motdepasse, fa } = req.body;
+    console.log("[LOGIN] Envoi authentification...");
+
+    const result = await doLogin(identifiant, motdepasse, fa);
+    const { data, token, allCookies } = result;
+
+    console.log("[LOGIN] Code:", data.code, "Token:", token ? token.substring(0, 15) + "..." : "AUCUN");
 
     // Code 250 = double authentification requise (QCM)
     if (data.code === 250 && token) {
-      console.log("[LOGIN] Double auth requise — recuperation question QCM...");
+      console.log("[LOGIN] Double auth requise...");
 
       // Stocker session pour les etapes suivantes
       pendingAuth.set(token, {
         cookies: allCookies,
-        gtkCookies: cookies,
-        gtkValue,
         identifiant,
         motdepasse,
       });
 
-      // Recuperer la question QCM avec X-Token
-      const daResult = await getDoubleAuth(token, allCookies);
+      // Recuperer la question QCM
+      const daData = await edFetch(
+        `${API_BASE}/connexion/doubleauth.awp?verbe=get&v=${API_VERSION}`,
+        {
+          method: "POST",
+          headers: {
+            ...BROWSER_HEADERS,
+            "Content-Type": "application/x-www-form-urlencoded",
+            "X-Token": token,
+            Cookie: allCookies.join("; "),
+          },
+          body: "data={}",
+          agent,
+        }
+      );
 
-      console.log("[LOGIN] DoubleAuth GET result:", JSON.stringify(daResult.data, null, 2));
+      const newToken = daData._headerToken || daData.token || token;
+      console.log("[DA-GET] Code:", daData.code, "Token:", newToken ? newToken.substring(0, 15) + "..." : "vide");
+      console.log("[DA-GET] Data:", JSON.stringify(daData.data, null, 2).substring(0, 500));
 
-      // Mettre a jour le token si l'API en a renvoye un nouveau
-      if (daResult.token && daResult.token !== token) {
-        console.log("[LOGIN] Token mis a jour par doubleauth GET");
-        // Re-enregistrer la session avec le nouveau token
+      // Mettre a jour le token dans pendingAuth si necessaire
+      if (newToken !== token) {
         const session = pendingAuth.get(token);
         pendingAuth.delete(token);
-        pendingAuth.set(daResult.token, session);
+        pendingAuth.set(newToken, session);
       }
 
       res.json({
         code: 250,
-        token: daResult.token || token,
+        token: newToken,
         message: "Double authentification requise",
-        doubleAuth: daResult.data || daResult,
+        doubleAuth: daData.data || daData,
       });
       return;
     }
 
-    // Succes direct (code 200) ou erreur
-    if (token && token !== data.token) {
-      data.token = token; // Utiliser le token du header si different
-    }
     res.json(data);
   } catch (err) {
     console.error("[LOGIN] Erreur:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
-
-// ── Recuperer la question QCM pour la double auth ──
-async function getDoubleAuth(token, cookies) {
-  console.log("[DA-GET] X-Token:", token.substring(0, 20) + "...", "Cookies:", cookies.length);
-
-  const daRes = await fetchWithRetry(
-    `${API_BASE}/connexion/doubleauth.awp?verbe=get&v=${API_VERSION}`,
-    {
-      method: "POST",
-      headers: {
-        ...BROWSER_HEADERS,
-        "Content-Type": "application/x-www-form-urlencoded",
-        "X-Token": token,
-        Cookie: cookies.join("; "),
-      },
-      body: "data={}",
-      agent,
-    }
-  );
-
-  const headerToken = extractHeaderToken(daRes);
-  const data = await daRes.json();
-
-  console.log("[DA-GET] Code:", data.code, "Message:", data.message || "");
-  console.log("[DA-GET] Token header:", headerToken ? headerToken.substring(0, 20) + "..." : "vide");
-
-  // Utiliser le token le plus recent (header > body > original)
-  data.token = headerToken || data.token || token;
-  return data;
-}
 
 // ── POST /api/doubleauth — soumettre la reponse QCM ──
 app.post("/api/doubleauth", async (req, res) => {
@@ -369,13 +361,14 @@ app.post("/api/doubleauth", async (req, res) => {
     const session = pendingAuth.get(token);
 
     if (!session) {
+      console.log("[DA-POST] Token introuvable dans pendingAuth. Tokens disponibles:", [...pendingAuth.keys()].map(k => k.substring(0, 15)));
       return res.status(400).json({ error: "Session expiree, reconnectez-vous" });
     }
 
-    console.log("[DA-POST] Envoi choix:", choix);
+    console.log("[DA-POST] Envoi choix:", choix, "Token:", token.substring(0, 15) + "...");
 
-    // Soumettre la reponse au QCM avec X-Token
-    const response = await fetchWithRetry(
+    // Soumettre la reponse au QCM
+    const daData = await edFetch(
       `${API_BASE}/connexion/doubleauth.awp?verbe=post&v=${API_VERSION}`,
       {
         method: "POST",
@@ -390,63 +383,24 @@ app.post("/api/doubleauth", async (req, res) => {
       }
     );
 
-    const daHeaderToken = extractHeaderToken(response);
-    const daData = await response.json();
     console.log("[DA-POST] Code:", daData.code, "Message:", daData.message || "");
-    console.log("[DA-POST] Reponse data:", JSON.stringify(daData.data, null, 2));
+    console.log("[DA-POST] Data:", JSON.stringify(daData.data, null, 2).substring(0, 500));
 
     // Si succes (code 200), on recoit cn + cv → re-login avec fa
-    if (daData.code === 200 && daData.data && daData.data.cn && daData.data.cv) {
-      console.log("[DA-POST] cn/cv recus — re-login avec fa...");
+    if (daData.code === 200 && daData.data) {
+      const cn = daData.data.cn;
+      const cv = daData.data.cv;
 
-      const fa = [{ cn: daData.data.cn, cv: daData.data.cv }];
+      if (cn && cv) {
+        console.log("[DA-POST] cn/cv recus — re-login avec fa...");
+        const fa = [{ cn, cv }];
+        const loginResult = await doLogin(session.identifiant, session.motdepasse, fa);
 
-      // Re-obtenir un GTK frais
-      const { cookies: freshCookies, gtkValue: freshGtk } = await getGtkCookies();
-
-      const loginRes = await fetchWithRetry(
-        `${API_BASE}/login.awp?v=${API_VERSION}`,
-        {
-          method: "POST",
-          headers: {
-            ...BROWSER_HEADERS,
-            "Content-Type": "application/x-www-form-urlencoded",
-            "X-Token": "",
-            "X-Gtk": freshGtk,
-            Cookie: freshCookies.join("; "),
-          },
-          body: `data=${JSON.stringify({
-            identifiant: session.identifiant,
-            motdepasse: session.motdepasse,
-            isRelogin: false,
-            uuid: "",
-            fa,
-          })}`,
-          agent,
-        }
-      );
-
-      const loginHeaderToken = extractHeaderToken(loginRes);
-      const loginData = await loginRes.json();
-      // Utiliser le token du header si disponible
-      if (loginHeaderToken) {
-        loginData.token = loginHeaderToken;
+        console.log("[DA-POST] Re-login code:", loginResult.data.code);
+        pendingAuth.delete(token);
+        res.json(loginResult.data);
+        return;
       }
-
-      console.log("[DA-POST] Re-login code:", loginData.code, "message:", loginData.message);
-      console.log("[DA-POST] Re-login token:", loginData.token ? loginData.token.substring(0, 20) + "..." : "vide");
-      console.log("[DA-POST] Re-login accounts:", loginData.data && loginData.data.accounts ? loginData.data.accounts.length : "aucun");
-      if (loginData.data && loginData.data.accounts && loginData.data.accounts[0]) {
-        const acc = loginData.data.accounts[0];
-        console.log("[DA-POST] Account:", acc.id, acc.prenom, acc.nom, "type:", acc.typeCompte);
-        if (acc.profile && acc.profile.eleves) {
-          console.log("[DA-POST] Eleves:", JSON.stringify(acc.profile.eleves.map(e => ({ id: e.id, prenom: e.prenom, nom: e.nom }))));
-        }
-      }
-
-      pendingAuth.delete(token);
-      res.json(loginData);
-      return;
     }
 
     pendingAuth.delete(token);
