@@ -167,6 +167,9 @@
         if (target === "viescolaire" && !VieScolaire.rawData) {
           VieScolaire.load();
         }
+        if (target === "messages" && !Messages.rawData) {
+          Messages.load();
+        }
       });
     });
   }
@@ -282,6 +285,8 @@
     Homework.rawData = null;
     Homework.doneStatus = {};
     VieScolaire.rawData = null;
+    Messages.rawData = null;
+    Messages.currentMessage = null;
     if (Grades.chart) {
       Grades.chart.destroy();
       Grades.chart = null;

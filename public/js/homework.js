@@ -62,8 +62,8 @@ const Homework = {
     const monthAgo = new Date(now);
     monthAgo.setDate(monthAgo.getDate() - 30);
 
-    let html = "";
-    let totalUndone = 0;
+    const fragment = document.createDocumentFragment();
+    let hasContent = false;
 
     for (const dateStr of dates) {
       const date = new Date(dateStr);
@@ -72,24 +72,42 @@ const Homework = {
       const items = data[dateStr];
       if (!items || items.length === 0) continue;
 
+      // Countdown relatif : aujourd'hui, demain, lundi, mardi...
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const target = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      const diffDays = Math.round((target - today) / (1000 * 60 * 60 * 24));
+
+      let countdown = "";
+      if (diffDays === 0) countdown = "Aujourd'hui";
+      else if (diffDays === 1) countdown = "Demain";
+      else if (diffDays === -1) countdown = "Hier";
+      else if (diffDays > 1 && diffDays <= 6) countdown = date.toLocaleDateString("fr-FR", { weekday: "long" });
+      else if (diffDays < -1 && diffDays >= -6) countdown = date.toLocaleDateString("fr-FR", { weekday: "long" }) + " dernier";
+
       const formattedDate = date.toLocaleDateString("fr-FR", {
         weekday: "long",
         day: "numeric",
         month: "long",
-        year: "numeric",
       });
+
+      const displayDate = countdown
+        ? `${countdown} — ${formattedDate}`
+        : formattedDate + " " + date.getFullYear();
 
       const isPast = date < now;
 
-      html += `<div class="homework-day">
-        <div class="homework-day-header">${formattedDate}</div>`;
+      const dayDiv = document.createElement("div");
+      dayDiv.className = "homework-day";
+
+      const header = document.createElement("div");
+      header.className = "homework-day-header";
+      header.textContent = displayDate;
+      dayDiv.appendChild(header);
 
       for (const item of items) {
         const subject = item.matiere || "Inconnu";
         const storageKey = this.getStorageKey(dateStr, subject);
         const isDone = !!this.doneStatus[storageKey];
-
-        if (!isDone && !isPast) totalUndone++;
 
         // Decoder le contenu base64
         let content = "";
@@ -117,45 +135,40 @@ const Homework = {
           .replace(/&gt;/g, ">")
           .trim();
 
-        html += `<div class="homework-item ${isDone ? "done" : ""}" data-key="${storageKey}">
-          <input type="checkbox" class="homework-check" ${isDone ? "checked" : ""}>
+        const itemDiv = document.createElement("div");
+        itemDiv.className = `homework-item${isDone ? " done" : ""}`;
+        itemDiv.dataset.key = storageKey;
+        itemDiv.innerHTML = `<input type="checkbox" class="homework-check" ${isDone ? "checked" : ""}>
           <div class="homework-body">
             <div class="homework-subject">${subject}</div>
             <div class="homework-content">${content || "Pas de details"}</div>
-          </div>
-        </div>`;
+          </div>`;
+
+        itemDiv.querySelector(".homework-check").addEventListener("change", (e) => {
+          const done = e.target.checked;
+          if (done) {
+            this.doneStatus[storageKey] = true;
+          } else {
+            delete this.doneStatus[storageKey];
+          }
+          itemDiv.classList.toggle("done", done);
+          this.updateStats();
+          API.saveHomeworkDone(this.doneStatus);
+        });
+
+        dayDiv.appendChild(itemDiv);
       }
 
-      html += "</div>";
+      fragment.appendChild(dayDiv);
+      hasContent = true;
     }
 
-    if (!html) {
-      html = '<p class="loading">Aucun devoir a afficher</p>';
+    container.innerHTML = "";
+    if (hasContent) {
+      container.appendChild(fragment);
+    } else {
+      container.innerHTML = '<p class="loading">Aucun devoir a afficher</p>';
     }
-
-    container.innerHTML = html;
-
-    // Toggle fait/pas fait
-    container.querySelectorAll(".homework-check").forEach((checkbox) => {
-      checkbox.addEventListener("change", (e) => {
-        const item = e.target.closest(".homework-item");
-        const key = item.dataset.key;
-        const done = e.target.checked;
-
-        // Mettre a jour en memoire
-        if (done) {
-          this.doneStatus[key] = true;
-        } else {
-          delete this.doneStatus[key];
-        }
-
-        item.classList.toggle("done", done);
-        this.updateStats();
-
-        // Sauvegarder en SQLite (fire-and-forget)
-        API.saveHomeworkDone(this.doneStatus);
-      });
-    });
   },
 
   updateStats() {

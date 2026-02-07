@@ -258,6 +258,103 @@ const API = {
     }
   },
 
+  // Recupere la vie scolaire
+  async getVieScolaire() {
+    console.log("[API] getVieScolaire userId:", this.userId);
+    const res = await fetch(`/api/viescolaire/${this.userId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: this.token }),
+    });
+
+    const data = await res.json();
+
+    if (data.code === 200) {
+      if (data.token) this.token = data.token;
+      return { success: true, data: data.data };
+    }
+
+    return { success: false, message: data.message };
+  },
+
+  async saveVieScolaireCache(data) {
+    try {
+      await fetch("/api/cache/viescolaire", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: this.userId, data }),
+      });
+    } catch (err) {
+      console.warn("[API] saveVieScolaireCache erreur (non bloquant):", err.message);
+    }
+  },
+
+  async loadVieScolaireCache() {
+    try {
+      const res = await fetch(`/api/cache/viescolaire/${this.userId}`);
+      const result = await res.json();
+      return result.cached || null;
+    } catch (err) {
+      console.warn("[API] loadVieScolaireCache erreur:", err.message);
+      return null;
+    }
+  },
+
+  // Recupere les messages
+  async getMessages(type) {
+    console.log("[API] getMessages userId:", this.userId, "type:", type);
+    const res = await fetch(`/api/messages/${this.userId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: this.token, typeRecup498: type || "received" }),
+    });
+
+    const data = await res.json();
+
+    if (data.code === 200) {
+      if (data.token) this.token = data.token;
+      return { success: true, data: data.data };
+    }
+
+    return { success: false, message: data.message };
+  },
+
+  // Lire un message specifique
+  async readMessage(msgId, mode) {
+    const res = await fetch(`/api/messages/${this.userId}/read/${msgId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: this.token, mode: mode || "destinataire" }),
+    });
+
+    const data = await res.json();
+
+    if (data.code === 200) {
+      if (data.token) this.token = data.token;
+      return { success: true, data: data.data };
+    }
+
+    return { success: false, message: data.message };
+  },
+
+  // Envoyer un message (repondre)
+  async sendMessage(messageData) {
+    const res = await fetch(`/api/messages/${this.userId}/send`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: this.token, messageData }),
+    });
+
+    const data = await res.json();
+
+    if (data.code === 200) {
+      if (data.token) this.token = data.token;
+      return { success: true, data: data.data };
+    }
+
+    return { success: false, message: data.message };
+  },
+
   // Recupere l'emploi du temps
   async getSchedule(dateDebut, dateFin) {
     console.log("[API] getSchedule userId:", this.userId);

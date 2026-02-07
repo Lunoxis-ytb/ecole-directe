@@ -104,6 +104,7 @@
       <button class="tab" data-tab="homework"><span class="tab-full">Devoirs</span><span class="tab-short">Devoirs</span></button>
       <button class="tab" data-tab="schedule"><span class="tab-full">Emploi du temps</span><span class="tab-short">EDT</span></button>
       <button class="tab" data-tab="viescolaire"><span class="tab-full">Vie Scolaire</span><span class="tab-short">Vie Scol.</span></button>
+      <button class="tab" data-tab="messages"><span class="tab-full">Messages</span><span class="tab-short">Msgs</span></button>
     </nav>
 
     <!-- Tab content -->
@@ -171,6 +172,16 @@
         </div>
       </section>
 
+      <!-- Messages -->
+      <section id="tab-messages" class="tab-panel">
+        <div class="panel-header">
+          <h2>Messagerie</h2>
+        </div>
+        <div id="messages-container" class="messages-container">
+          <p class="loading">Chargement des messages...</p>
+        </div>
+      </section>
+
     </main>
   </div>
 
@@ -179,6 +190,7 @@
   <script src="/js/homework.js"></script>
   <script src="/js/schedule.js"></script>
   <script src="/js/viescolaire.js"></script>
+  <script src="/js/messages.js"></script>
   <script src="/js/app.js"></script>
   <script>
     if ("serviceWorker" in navigator) {

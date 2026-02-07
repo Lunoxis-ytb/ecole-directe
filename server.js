@@ -550,6 +550,91 @@ app.post("/api/viescolaire/:id", async (req, res) => {
   }
 });
 
+// ── POST /api/messages/:id — lister les messages ──
+app.post("/api/messages/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { token, typeRecup498} = req.body;
+
+    const response = await fetch(
+      `${API_BASE}/eleves/${id}/messages.awp?verbe=getall&typeRecup498=${typeRecup498|| "received"}&v=${API_VERSION}`,
+      {
+        method: "POST",
+        headers: authHeaders(token),
+        body: `data=${JSON.stringify({ anneeMessages: "" })}`,
+        agent,
+      }
+    );
+
+    const headerToken = extractHeaderToken(response);
+    const data = await response.json();
+    if (headerToken) data.token = headerToken;
+
+    console.log("[MESSAGES] Code:", data.code, "Type:", typeRecup498 || "received",
+      "Count:", data.data && data.data.messages && data.data.messages.received ? data.data.messages.received.length : 0);
+    res.json(data);
+  } catch (err) {
+    console.error("[MESSAGES] Erreur:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/messages/:id/read/:msgId — lire un message specifique ──
+app.post("/api/messages/:id/read/:msgId", async (req, res) => {
+  try {
+    const { id, msgId } = req.params;
+    const { token, mode } = req.body;
+
+    const response = await fetch(
+      `${API_BASE}/eleves/${id}/messages/${msgId}.awp?verbe=get&mode=${mode || "destinataire"}&v=${API_VERSION}`,
+      {
+        method: "POST",
+        headers: authHeaders(token),
+        body: `data=${JSON.stringify({ anneeMessages: "" })}`,
+        agent,
+      }
+    );
+
+    const headerToken = extractHeaderToken(response);
+    const data = await response.json();
+    if (headerToken) data.token = headerToken;
+
+    console.log("[MSG-READ] Code:", data.code, "MsgId:", msgId);
+    res.json(data);
+  } catch (err) {
+    console.error("[MSG-READ] Erreur:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/messages/:id/send — envoyer un message ──
+app.post("/api/messages/:id/send", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { token, messageData } = req.body;
+
+    const response = await fetch(
+      `${API_BASE}/eleves/${id}/messages.awp?verbe=post&v=${API_VERSION}`,
+      {
+        method: "POST",
+        headers: authHeaders(token),
+        body: `data=${JSON.stringify(messageData)}`,
+        agent,
+      }
+    );
+
+    const headerToken = extractHeaderToken(response);
+    const data = await response.json();
+    if (headerToken) data.token = headerToken;
+
+    console.log("[MSG-SEND] Code:", data.code);
+    res.json(data);
+  } catch (err) {
+    console.error("[MSG-SEND] Erreur:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ══ ROUTES PERSISTANCE (Supabase) ══
 
 // ── Session ──

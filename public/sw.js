@@ -1,4 +1,4 @@
-const CACHE_NAME = "edmm-v10";
+const CACHE_NAME = "edmm-v11";
 const STATIC_ASSETS = [
   "/",
   "/css/style.css",
@@ -8,6 +8,7 @@ const STATIC_ASSETS = [
   "/js/homework.js",
   "/js/schedule.js",
   "/js/viescolaire.js",
+  "/js/messages.js",
   "/icons/icon-192.png",
   "/icons/icon-512.png",
 ];

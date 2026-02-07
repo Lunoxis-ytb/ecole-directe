@@ -506,12 +506,13 @@ const Grades = {
         },
       },
       plugins: [{
-        // Plugin : dessiner des pills arrondis autour de chaque item de legende
         id: "legendPills",
         afterDraw(chart) {
           const legend = chart.legend;
           if (!legend || !legend.legendItems) return;
           const ctx = chart.ctx;
+          // Couleurs fixes par label pour eviter les problemes de couleur
+          const pillColors = { "Ma moyenne": "#4f8cff", "Notes": "#e2e8f0", "Classe": "#a78bfa" };
 
           for (let i = 0; i < legend.legendItems.length; i++) {
             const item = legend.legendItems[i];
@@ -523,26 +524,23 @@ const Grades = {
             const w = hitBox.width + 12;
             const h = hitBox.height + 8;
             const r = h / 2;
-
-            // Fond pill
-            const color = item.strokeStyle || item.fillStyle || "#9aa0b0";
+            const color = pillColors[item.text] || "#9aa0b0";
             const hidden = item.hidden;
 
             ctx.save();
             ctx.beginPath();
             ctx.roundRect(x, y, w, h, r);
             if (hidden) {
+              // Desactive : fond sombre, bordure discrète
               ctx.fillStyle = "rgba(255, 255, 255, 0.03)";
-              ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
+              ctx.strokeStyle = "rgba(255, 255, 255, 0.12)";
             } else {
-              // Extraire la couleur et l'appliquer avec transparence
-              ctx.fillStyle = color.replace(")", ", 0.12)").replace("rgb(", "rgba(").replace("#", "");
-              // Fallback pour les couleurs hex
-              if (ctx.fillStyle.includes("#")) {
-                ctx.fillStyle = `${color}1F`; // ~12% opacity
-              }
-              ctx.strokeStyle = color;
-              ctx.globalAlpha = 0.6;
+              // Active : fond colore semi-transparent, bordure visible
+              const r2 = parseInt(color.slice(1, 3), 16);
+              const g2 = parseInt(color.slice(3, 5), 16);
+              const b2 = parseInt(color.slice(5, 7), 16);
+              ctx.fillStyle = `rgba(${r2}, ${g2}, ${b2}, 0.15)`;
+              ctx.strokeStyle = `rgba(${r2}, ${g2}, ${b2}, 0.7)`;
             }
             ctx.lineWidth = 1;
             ctx.fill();
