@@ -6,7 +6,7 @@ const path = require("path");
 const crypto = require("crypto");
 const db = require("./db");
 
-// Agent HTTPS qui accepte les certificats incomplets (usage local uniquement)
+// Agent HTTPS qui accepte les certificats incomplets
 const agent = new https.Agent({ rejectUnauthorized: false });
 
 const app = express();
@@ -14,7 +14,43 @@ const PORT = process.env.PORT || 3000;
 const API_BASE = "https://api.ecoledirecte.com/v3";
 const API_VERSION = "4.90.1";
 const UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36";
+
+// Headers communs pour imiter un vrai navigateur sur ecoledirecte.com
+const BROWSER_HEADERS = {
+  "User-Agent": UA,
+  "Accept": "application/json, text/plain, */*",
+  "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
+  "Origin": "https://www.ecoledirecte.com",
+  "Referer": "https://www.ecoledirecte.com/",
+  "Sec-Fetch-Dest": "empty",
+  "Sec-Fetch-Mode": "cors",
+  "Sec-Fetch-Site": "same-site",
+  "Sec-Ch-Ua": '"Chromium";v="132", "Not A(Brand";v="99", "Google Chrome";v="132"',
+  "Sec-Ch-Ua-Mobile": "?0",
+  "Sec-Ch-Ua-Platform": '"Windows"',
+};
+
+// Utilitaire : fetch avec retry automatique (HFSQL errors, etc.)
+async function fetchWithRetry(url, options, maxRetries = 3) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    const res = await fetch(url, options);
+    const cloned = res.clone();
+    try {
+      const body = await cloned.json();
+      // Si erreur HFSQL / serveur interne ED, on retry
+      if (body.code && body.code !== 200 && body.code !== 250 &&
+          body.message && (body.message.includes("HFSQL") || body.message.includes("connexion au serveur") || body.message.includes("74000"))) {
+        console.log(`[RETRY] Tentative ${attempt}/${maxRetries} - Erreur ED: ${body.message.substring(0, 80)}`);
+        if (attempt < maxRetries) {
+          await new Promise(r => setTimeout(r, 1500 * attempt));
+          continue;
+        }
+      }
+    } catch {}
+    return res;
+  }
+}
 
 app.use(compression());
 app.use(express.json());
@@ -192,7 +228,7 @@ async function getGtkCookies() {
     `${API_BASE}/login.awp?gtk=1&v=${API_VERSION}`,
     {
       method: "GET",
-      headers: { "User-Agent": UA },
+      headers: { ...BROWSER_HEADERS },
       agent,
     }
   );
@@ -213,13 +249,13 @@ app.post("/api/login", async (req, res) => {
 
     // Etape 2 : POST login
     console.log("[LOGIN] Envoi authentification...");
-    const response = await fetch(
+    const response = await fetchWithRetry(
       `${API_BASE}/login.awp?v=${API_VERSION}`,
       {
         method: "POST",
         headers: {
+          ...BROWSER_HEADERS,
           "Content-Type": "application/x-www-form-urlencoded",
-          "User-Agent": UA,
           "X-Token": "",
           "X-Gtk": gtkValue,
           Cookie: cookies.join("; "),
@@ -300,13 +336,13 @@ app.post("/api/login", async (req, res) => {
 async function getDoubleAuth(token, cookies) {
   console.log("[DA-GET] X-Token:", token.substring(0, 20) + "...", "Cookies:", cookies.length);
 
-  const daRes = await fetch(
+  const daRes = await fetchWithRetry(
     `${API_BASE}/connexion/doubleauth.awp?verbe=get&v=${API_VERSION}`,
     {
       method: "POST",
       headers: {
+        ...BROWSER_HEADERS,
         "Content-Type": "application/x-www-form-urlencoded",
-        "User-Agent": UA,
         "X-Token": token,
         Cookie: cookies.join("; "),
       },
@@ -339,13 +375,13 @@ app.post("/api/doubleauth", async (req, res) => {
     console.log("[DA-POST] Envoi choix:", choix);
 
     // Soumettre la reponse au QCM avec X-Token
-    const response = await fetch(
+    const response = await fetchWithRetry(
       `${API_BASE}/connexion/doubleauth.awp?verbe=post&v=${API_VERSION}`,
       {
         method: "POST",
         headers: {
+          ...BROWSER_HEADERS,
           "Content-Type": "application/x-www-form-urlencoded",
-          "User-Agent": UA,
           "X-Token": token,
           Cookie: session.cookies.join("; "),
         },
@@ -368,13 +404,13 @@ app.post("/api/doubleauth", async (req, res) => {
       // Re-obtenir un GTK frais
       const { cookies: freshCookies, gtkValue: freshGtk } = await getGtkCookies();
 
-      const loginRes = await fetch(
+      const loginRes = await fetchWithRetry(
         `${API_BASE}/login.awp?v=${API_VERSION}`,
         {
           method: "POST",
           headers: {
+            ...BROWSER_HEADERS,
             "Content-Type": "application/x-www-form-urlencoded",
-            "User-Agent": UA,
             "X-Token": "",
             "X-Gtk": freshGtk,
             Cookie: freshCookies.join("; "),
@@ -424,9 +460,9 @@ app.post("/api/doubleauth", async (req, res) => {
 // Headers communs pour les requetes authentifiees
 function authHeaders(token) {
   return {
+    ...BROWSER_HEADERS,
     "Content-Type": "application/x-www-form-urlencoded",
     "X-Token": token,
-    "User-Agent": UA,
   };
 }
 
