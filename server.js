@@ -6,8 +6,8 @@ const path = require("path");
 const crypto = require("crypto");
 const db = require("./db");
 
-// Agent HTTPS qui accepte les certificats incomplets
-const agent = new https.Agent({ rejectUnauthorized: false });
+// Agent HTTPS avec timeout de 15s
+const agent = new https.Agent({ rejectUnauthorized: false, timeout: 15000 });
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -31,23 +31,29 @@ const BROWSER_HEADERS = {
   "Sec-Ch-Ua-Platform": '"Windows"',
 };
 
-// Utilitaire : fetch ED avec retry (retourne directement le JSON parse)
+// Fetch vers ED avec timeout 15s + retry HFSQL
 async function edFetch(url, options, maxRetries = 2) {
-  let lastRes, lastData;
+  let lastData;
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    lastRes = await fetch(url, options);
-    const headerToken = extractHeaderToken(lastRes);
-    lastData = await lastRes.json();
-    if (headerToken) lastData._headerToken = headerToken;
-    // Si erreur HFSQL / serveur interne ED → retry
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15000);
+    try {
+      const res = await fetch(url, { ...options, signal: controller.signal });
+      clearTimeout(timer);
+      const headerToken = extractHeaderToken(res);
+      lastData = await res.json();
+      if (headerToken) lastData._headerToken = headerToken;
+    } catch (err) {
+      clearTimeout(timer);
+      if (attempt < maxRetries) { await new Promise(r => setTimeout(r, 500)); continue; }
+      throw err;
+    }
+    // Si erreur HFSQL → retry
     const msg = lastData.message || "";
     if (lastData.code && lastData.code !== 200 && lastData.code !== 250 &&
         (msg.includes("HFSQL") || msg.includes("connexion au serveur") || msg.includes("74000"))) {
       console.log(`[RETRY] ${attempt}/${maxRetries} - ${msg.substring(0, 80)}`);
-      if (attempt < maxRetries) {
-        await new Promise(r => setTimeout(r, 800));
-        continue;
-      }
+      if (attempt < maxRetries) { await new Promise(r => setTimeout(r, 500)); continue; }
     }
     break;
   }
@@ -226,14 +232,18 @@ function extractHeaderToken(fetchResponse) {
 
 // ── Etape 1 commune : obtenir GTK cookies ──
 async function getGtkCookies() {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10000);
   const gtkRes = await fetch(
     `${API_BASE}/login.awp?gtk=1&v=${API_VERSION}`,
     {
       method: "GET",
       headers: { ...BROWSER_HEADERS },
       agent,
+      signal: controller.signal,
     }
   );
+  clearTimeout(timer);
   const cookies = extractCookies(gtkRes);
   const gtkCookie = cookies.find((c) => c.startsWith("GTK="));
   const gtkValue = gtkCookie ? gtkCookie.split("=").slice(1).join("=") : "";
@@ -246,27 +256,38 @@ async function getGtkCookies() {
 async function doLogin(identifiant, motdepasse, fa, maxRetries = 2) {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     const { cookies, gtkValue } = await getGtkCookies();
-    const response = await fetch(
-      `${API_BASE}/login.awp?v=${API_VERSION}`,
-      {
-        method: "POST",
-        headers: {
-          ...BROWSER_HEADERS,
-          "Content-Type": "application/x-www-form-urlencoded",
-          "X-Token": "",
-          "X-Gtk": gtkValue,
-          Cookie: cookies.join("; "),
-        },
-        body: `data=${JSON.stringify({
-          identifiant,
-          motdepasse,
-          isRelogin: false,
-          uuid: "",
-          fa: fa || [],
-        })}`,
-        agent,
-      }
-    );
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15000);
+    let response;
+    try {
+      response = await fetch(
+        `${API_BASE}/login.awp?v=${API_VERSION}`,
+        {
+          method: "POST",
+          headers: {
+            ...BROWSER_HEADERS,
+            "Content-Type": "application/x-www-form-urlencoded",
+            "X-Token": "",
+            "X-Gtk": gtkValue,
+            Cookie: cookies.join("; "),
+          },
+          body: `data=${JSON.stringify({
+            identifiant,
+            motdepasse,
+            isRelogin: false,
+            uuid: "",
+            fa: fa || [],
+          })}`,
+          agent,
+          signal: controller.signal,
+        }
+      );
+    } catch (err) {
+      clearTimeout(timer);
+      if (attempt < maxRetries) { await new Promise(r => setTimeout(r, 500)); continue; }
+      throw err;
+    }
+    clearTimeout(timer);
 
     const loginCookies = extractCookies(response);
     const allCookies = [...cookies, ...loginCookies];
@@ -279,10 +300,7 @@ async function doLogin(identifiant, motdepasse, fa, maxRetries = 2) {
     if (data.code !== 200 && data.code !== 250 &&
         (msg.includes("HFSQL") || msg.includes("connexion au serveur") || msg.includes("74000"))) {
       console.log(`[LOGIN] HFSQL retry ${attempt}/${maxRetries}: ${msg.substring(0, 60)}`);
-      if (attempt < maxRetries) {
-        await new Promise(r => setTimeout(r, 800));
-        continue;
-      }
+      if (attempt < maxRetries) { await new Promise(r => setTimeout(r, 500)); continue; }
     }
 
     if (token && token !== data.token) data.token = token;
@@ -358,14 +376,26 @@ app.post("/api/login", async (req, res) => {
 app.post("/api/doubleauth", async (req, res) => {
   try {
     const { token, choix } = req.body;
-    const session = pendingAuth.get(token);
 
+    // Chercher la session avec le token exact OU en fallback le dernier token enregistre
+    let session = pendingAuth.get(token);
+    let actualToken = token;
     if (!session) {
-      console.log("[DA-POST] Token introuvable dans pendingAuth. Tokens disponibles:", [...pendingAuth.keys()].map(k => k.substring(0, 15)));
-      return res.status(400).json({ error: "Session expiree, reconnectez-vous" });
+      // Fallback : chercher le token le plus recent dans pendingAuth
+      const keys = [...pendingAuth.keys()];
+      if (keys.length > 0) {
+        actualToken = keys[keys.length - 1];
+        session = pendingAuth.get(actualToken);
+        console.log("[DA-POST] Token fallback:", actualToken.substring(0, 15));
+      }
     }
 
-    console.log("[DA-POST] Envoi choix:", choix, "Token:", token.substring(0, 15) + "...");
+    if (!session) {
+      console.log("[DA-POST] Aucune session trouvee. PendingAuth vide.");
+      return res.status(400).json({ code: 505, message: "Session expiree, reconnectez-vous" });
+    }
+
+    console.log("[DA-POST] Envoi choix:", choix, "Token:", actualToken.substring(0, 15) + "...");
 
     // Soumettre la reponse au QCM
     const daData = await edFetch(
@@ -375,7 +405,7 @@ app.post("/api/doubleauth", async (req, res) => {
         headers: {
           ...BROWSER_HEADERS,
           "Content-Type": "application/x-www-form-urlencoded",
-          "X-Token": token,
+          "X-Token": actualToken,
           Cookie: session.cookies.join("; "),
         },
         body: `data=${JSON.stringify({ choix })}`,
@@ -384,30 +414,38 @@ app.post("/api/doubleauth", async (req, res) => {
     );
 
     console.log("[DA-POST] Code:", daData.code, "Message:", daData.message || "");
-    console.log("[DA-POST] Data:", JSON.stringify(daData.data, null, 2).substring(0, 500));
+    console.log("[DA-POST] Full data:", JSON.stringify(daData.data, null, 2));
 
-    // Si succes (code 200), on recoit cn + cv → re-login avec fa
-    if (daData.code === 200 && daData.data) {
-      const cn = daData.data.cn;
-      const cv = daData.data.cv;
+    // Si succes (code 200), re-login avec cn/cv
+    if (daData.code === 200) {
+      const cn = daData.data && daData.data.cn;
+      const cv = daData.data && daData.data.cv;
 
       if (cn && cv) {
         console.log("[DA-POST] cn/cv recus — re-login avec fa...");
         const fa = [{ cn, cv }];
         const loginResult = await doLogin(session.identifiant, session.motdepasse, fa);
-
         console.log("[DA-POST] Re-login code:", loginResult.data.code);
-        pendingAuth.delete(token);
+        pendingAuth.delete(actualToken);
         res.json(loginResult.data);
         return;
       }
+
+      // Succes SANS cn/cv (cas rare) → tenter re-login direct avec fa vide
+      console.log("[DA-POST] Code 200 mais pas de cn/cv, tentative re-login direct...");
+      const loginResult = await doLogin(session.identifiant, session.motdepasse, []);
+      console.log("[DA-POST] Re-login direct code:", loginResult.data.code);
+      pendingAuth.delete(actualToken);
+      res.json(loginResult.data);
+      return;
     }
 
-    pendingAuth.delete(token);
+    // Echec de la verification (mauvaise reponse, etc.)
+    pendingAuth.delete(actualToken);
     res.json(daData);
   } catch (err) {
     console.error("[DA-POST] Erreur:", err.message);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ code: 500, message: "Erreur serveur: " + err.message });
   }
 });
 
@@ -426,26 +464,17 @@ app.post("/api/grades/:id", async (req, res) => {
     const { id } = req.params;
     const { token, anneeScolaire } = req.body;
 
-    const response = await fetch(
+    const data = await edFetch(
       `${API_BASE}/eleves/${id}/notes.awp?verbe=get&v=${API_VERSION}`,
-      {
-        method: "POST",
-        headers: authHeaders(token),
-        body: `data=${JSON.stringify({ anneeScolaire: anneeScolaire || "" })}`,
-        agent,
-      }
+      { method: "POST", headers: authHeaders(token), body: `data=${JSON.stringify({ anneeScolaire: anneeScolaire || "" })}`, agent }
     );
+    if (data._headerToken) { data.token = data._headerToken; delete data._headerToken; }
 
-    const headerToken = extractHeaderToken(response);
-    const data = await response.json();
-    if (headerToken) data.token = headerToken;
-
-    console.log("[GRADES] Code:", data.code, "Notes:", data.data && data.data.notes ? data.data.notes.length : 0,
-      "Periodes:", data.data && data.data.periodes ? data.data.periodes.length : 0);
+    console.log("[GRADES] Code:", data.code, "Periodes:", data.data && data.data.periodes ? data.data.periodes.length : 0);
     res.json(data);
   } catch (err) {
     console.error("[GRADES] Erreur:", err.message);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ code: 500, message: err.message });
   }
 });
 
@@ -455,25 +484,16 @@ app.post("/api/homework/:id", async (req, res) => {
     const { id } = req.params;
     const { token } = req.body;
 
-    const response = await fetch(
+    const data = await edFetch(
       `${API_BASE}/Eleves/${id}/cahierdetexte.awp?verbe=get&v=${API_VERSION}`,
-      {
-        method: "POST",
-        headers: authHeaders(token),
-        body: "data={}",
-        agent,
-      }
+      { method: "POST", headers: authHeaders(token), body: "data={}", agent }
     );
+    if (data._headerToken) { data.token = data._headerToken; delete data._headerToken; }
 
-    const headerToken = extractHeaderToken(response);
-    const data = await response.json();
-    if (headerToken) data.token = headerToken;
-
-    console.log("[HOMEWORK] Code:", data.code, "Data keys:", data.data ? Object.keys(data.data).slice(0, 5) : "null");
     res.json(data);
   } catch (err) {
     console.error("[HOMEWORK] Erreur:", err.message);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ code: 500, message: err.message });
   }
 });
 
@@ -483,32 +503,17 @@ app.post("/api/schedule/:id", async (req, res) => {
     const { id } = req.params;
     const { token, dateDebut, dateFin } = req.body;
 
-    const response = await fetch(
+    const data = await edFetch(
       `${API_BASE}/E/${id}/emploidutemps.awp?verbe=get&v=${API_VERSION}`,
-      {
-        method: "POST",
-        headers: authHeaders(token),
-        body: `data=${JSON.stringify({
-          dateDebut: dateDebut || "",
-          dateFin: dateFin || "",
-          avecTrous: false,
-        })}`,
-        agent,
-      }
+      { method: "POST", headers: authHeaders(token), body: `data=${JSON.stringify({ dateDebut: dateDebut || "", dateFin: dateFin || "", avecTrous: false })}`, agent }
     );
-
-    const headerToken = extractHeaderToken(response);
-    const data = await response.json();
-    if (headerToken) data.token = headerToken;
+    if (data._headerToken) { data.token = data._headerToken; delete data._headerToken; }
 
     console.log("[SCHEDULE] Code:", data.code, "Events:", data.data ? data.data.length : 0);
-    if (data.data && data.data.length > 0) {
-      console.log("[SCHEDULE] Sample event:", JSON.stringify(data.data[0], null, 2));
-    }
     res.json(data);
   } catch (err) {
     console.error("[SCHEDULE] Erreur:", err.message);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ code: 500, message: err.message });
   }
 });
 
@@ -518,27 +523,16 @@ app.post("/api/viescolaire/:id", async (req, res) => {
     const { id } = req.params;
     const { token } = req.body;
 
-    const response = await fetch(
+    const data = await edFetch(
       `${API_BASE}/eleves/${id}/viescolaire.awp?verbe=get&v=${API_VERSION}`,
-      {
-        method: "POST",
-        headers: authHeaders(token),
-        body: "data={}",
-        agent,
-      }
+      { method: "POST", headers: authHeaders(token), body: "data={}", agent }
     );
+    if (data._headerToken) { data.token = data._headerToken; delete data._headerToken; }
 
-    const headerToken = extractHeaderToken(response);
-    const data = await response.json();
-    if (headerToken) data.token = headerToken;
-
-    console.log("[VIESCOLAIRE] Code:", data.code,
-      "Absences:", data.data && data.data.absencesRetards ? data.data.absencesRetards.length : 0,
-      "Sanctions:", data.data && data.data.sanctionsEncouragements ? data.data.sanctionsEncouragements.length : 0);
     res.json(data);
   } catch (err) {
     console.error("[VIESCOLAIRE] Erreur:", err.message);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ code: 500, message: err.message });
   }
 });
 
@@ -548,34 +542,16 @@ app.post("/api/messages/:id", async (req, res) => {
     const { id } = req.params;
     const { token, typeRecup498} = req.body;
 
-    const response = await fetch(
+    const data = await edFetch(
       `${API_BASE}/eleves/${id}/messages.awp?verbe=getall&typeRecup498=${typeRecup498|| "received"}&v=${API_VERSION}`,
-      {
-        method: "POST",
-        headers: authHeaders(token),
-        body: `data=${JSON.stringify({ anneeMessages: "" })}`,
-        agent,
-      }
+      { method: "POST", headers: authHeaders(token), body: `data=${JSON.stringify({ anneeMessages: "" })}`, agent }
     );
+    if (data._headerToken) { data.token = data._headerToken; delete data._headerToken; }
 
-    const headerToken = extractHeaderToken(response);
-    const data = await response.json();
-    if (headerToken) data.token = headerToken;
-
-    const msgs = data.data && data.data.messages;
-    const received = msgs && msgs.received ? msgs.received : [];
-    const sent = msgs && msgs.sent ? msgs.sent : [];
-    const allMsgs = received.length > 0 ? received : sent;
-    console.log("[MESSAGES] Code:", data.code, "Type:", typeRecup498 || "received",
-      "Count:", allMsgs.length);
-    if (allMsgs.length > 0) {
-      console.log("[MESSAGES] Sample msg keys:", Object.keys(allMsgs[0]));
-      console.log("[MESSAGES] Sample msg:", JSON.stringify(allMsgs[0], null, 2).substring(0, 800));
-    }
     res.json(data);
   } catch (err) {
     console.error("[MESSAGES] Erreur:", err.message);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ code: 500, message: err.message });
   }
 });
 
@@ -585,25 +561,16 @@ app.post("/api/messages/:id/read/:msgId", async (req, res) => {
     const { id, msgId } = req.params;
     const { token, mode } = req.body;
 
-    const response = await fetch(
+    const data = await edFetch(
       `${API_BASE}/eleves/${id}/messages/${msgId}.awp?verbe=get&mode=${mode || "destinataire"}&v=${API_VERSION}`,
-      {
-        method: "POST",
-        headers: authHeaders(token),
-        body: `data=${JSON.stringify({ anneeMessages: "" })}`,
-        agent,
-      }
+      { method: "POST", headers: authHeaders(token), body: `data=${JSON.stringify({ anneeMessages: "" })}`, agent }
     );
+    if (data._headerToken) { data.token = data._headerToken; delete data._headerToken; }
 
-    const headerToken = extractHeaderToken(response);
-    const data = await response.json();
-    if (headerToken) data.token = headerToken;
-
-    console.log("[MSG-READ] Code:", data.code, "MsgId:", msgId);
     res.json(data);
   } catch (err) {
     console.error("[MSG-READ] Erreur:", err.message);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ code: 500, message: err.message });
   }
 });
 
@@ -613,25 +580,16 @@ app.post("/api/messages/:id/send", async (req, res) => {
     const { id } = req.params;
     const { token, messageData } = req.body;
 
-    const response = await fetch(
+    const data = await edFetch(
       `${API_BASE}/eleves/${id}/messages.awp?verbe=post&v=${API_VERSION}`,
-      {
-        method: "POST",
-        headers: authHeaders(token),
-        body: `data=${JSON.stringify(messageData)}`,
-        agent,
-      }
+      { method: "POST", headers: authHeaders(token), body: `data=${JSON.stringify(messageData)}`, agent }
     );
+    if (data._headerToken) { data.token = data._headerToken; delete data._headerToken; }
 
-    const headerToken = extractHeaderToken(response);
-    const data = await response.json();
-    if (headerToken) data.token = headerToken;
-
-    console.log("[MSG-SEND] Code:", data.code);
     res.json(data);
   } catch (err) {
     console.error("[MSG-SEND] Erreur:", err.message);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ code: 500, message: err.message });
   }
 });
 
