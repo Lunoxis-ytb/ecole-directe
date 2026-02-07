@@ -421,25 +421,36 @@
   const themeToggle = document.getElementById("theme-toggle");
   const themeIcon = document.getElementById("theme-icon");
   const themeLabel = document.getElementById("theme-label");
+  const floatingThemeBtn = document.getElementById("floating-theme-btn");
   const savedTheme = localStorage.getItem("edmm_theme") || "dark";
 
   function applyTheme(theme) {
     document.documentElement.setAttribute("data-theme", theme);
-    themeToggle.classList.toggle("active", theme === "light");
-    themeIcon.innerHTML = theme === "light" ? "&#9788;" : "&#9790;";
+    if (themeToggle) themeToggle.classList.toggle("active", theme === "light");
+    if (themeIcon) themeIcon.innerHTML = theme === "light" ? "&#9788;" : "&#9790;";
     if (themeLabel) themeLabel.textContent = theme === "light" ? "Mode sombre" : "Mode clair";
+    if (floatingThemeBtn) floatingThemeBtn.innerHTML = theme === "light" ? "&#9790;" : "&#9788;";
     localStorage.setItem("edmm_theme", theme);
+  }
+
+  function toggleTheme() {
+    const current = document.documentElement.getAttribute("data-theme") || "dark";
+    applyTheme(current === "dark" ? "light" : "dark");
   }
 
   applyTheme(savedTheme);
 
+  // Settings menu toggle
   document.getElementById("theme-toggle-item").addEventListener("click", (e) => {
     e.preventDefault();
-    const current = document.documentElement.getAttribute("data-theme") || "dark";
-    applyTheme(current === "dark" ? "light" : "dark");
-    // Fermer le menu apres le changement
+    toggleTheme();
     settingsMenu.classList.remove("open");
   });
+
+  // Bouton flottant (toujours visible, meme avant login)
+  if (floatingThemeBtn) {
+    floatingThemeBtn.addEventListener("click", toggleTheme);
+  }
 
   // ── Init ──
   initTabs();
