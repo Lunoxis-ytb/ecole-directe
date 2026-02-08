@@ -213,6 +213,9 @@ if (APP_PASSWORD) {
   });
 }
 
+// Ping endpoint (reveille le serveur Render)
+app.get("/api/ping", (req, res) => res.json({ ok: true }));
+
 // Log toutes les requetes API
 app.use("/api", (req, res, next) => {
   console.log(`[REQ] ${req.method} ${req.url}`);

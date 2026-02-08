@@ -512,6 +512,9 @@
   });
 
   // ── Init ──
+  // Reveiller le serveur Render immediatement (cold start ~15s)
+  fetch(API_BASE + "/api/ping").catch(() => {});
+
   initTabs();
   initTrimesterSelect();
 
