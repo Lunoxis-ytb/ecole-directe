@@ -188,6 +188,10 @@ if (APP_PASSWORD) {
   app.use((req, res, next) => {
     if (req.path === "/auth" || req.path === "/gate") return next();
 
+    // Laisser passer les requetes de l'app native Capacitor
+    const origin = req.headers.origin || "";
+    if (origin && origin !== "https://ecole-directe.onrender.com") return next();
+
     // Laisser passer les fichiers statiques (CSS, JS, images, manifest, SW)
     const ext = path.extname(req.path);
     if (ext && ext !== ".html") return next();
