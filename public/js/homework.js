@@ -11,6 +11,15 @@ const Homework = {
   _lastDataHash: null,
   _saveDoneTimer: null,
 
+  _this._decodeB64Utf8(str) {
+    try {
+      const bytes = Uint8Array.from(atob(str), c => c.charCodeAt(0));
+      return new TextDecoder("utf-8").decode(bytes);
+    } catch {
+      try { return atob(str); } catch { return str; }
+    }
+  },
+
   _hashData(data) {
     try {
       const str = JSON.stringify(data);
@@ -111,8 +120,6 @@ const Homework = {
         ? `${countdown} — ${formattedDate}`
         : formattedDate + " " + date.getFullYear();
 
-      const isPast = date < now;
-
       const dayDiv = document.createElement("div");
       dayDiv.className = "homework-day";
 
@@ -126,21 +133,11 @@ const Homework = {
         const storageKey = this.getStorageKey(dateStr, subject);
         const isDone = !!this.doneStatus[storageKey];
 
-        // Decoder le contenu base64 (avec support UTF-8 pour les accents)
-        function decodeB64Utf8(str) {
-          try {
-            const bytes = Uint8Array.from(atob(str), c => c.charCodeAt(0));
-            return new TextDecoder("utf-8").decode(bytes);
-          } catch {
-            try { return atob(str); } catch { return str; }
-          }
-        }
-
         let content = "";
         if (item.aFaire && item.aFaire.contenu) {
-          content = decodeB64Utf8(item.aFaire.contenu);
+          content = this._decodeB64Utf8(item.aFaire.contenu);
         } else if (item.contenu) {
-          content = decodeB64Utf8(item.contenu);
+          content = this._decodeB64Utf8(item.contenu);
         }
 
         // Nettoyer les tags HTML basiques

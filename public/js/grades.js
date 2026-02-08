@@ -456,13 +456,6 @@ const Grades = {
       });
     }
 
-    // Couleurs pour les pills de legende
-    const legendColors = {
-      "Ma moyenne": "#4f8cff",
-      "Notes": "#9aa0b0",
-      "Classe": "#a78bfa",
-    };
-
     this.chart = new Chart(canvas, {
       type: "line",
       data: { labels, datasets },

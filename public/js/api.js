@@ -1,4 +1,6 @@
 // ══ API CLIENT — fetch vers le proxy local ══
+const API_BASE = window.Capacitor ? "https://ecole-directe.onrender.com" : "";
+
 const API = {
   token: null,
   userId: null,
@@ -51,7 +53,7 @@ const API = {
 
   // Authentification
   async login(identifiant, motdepasse) {
-    const res = await fetch("/api/login", {
+    const res = await fetch(API_BASE + "/api/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ identifiant, motdepasse }),
@@ -83,7 +85,7 @@ const API = {
 
   // Valider la double authentification (envoi du choix QCM)
   async submitDoubleAuth(token, choix) {
-    const res = await fetch("/api/doubleauth", {
+    const res = await fetch(API_BASE + "/api/doubleauth", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ token, choix }),
@@ -105,7 +107,7 @@ const API = {
   // Recupere les notes
   async getGrades() {
     console.log("[API] getGrades userId:", this.userId);
-    const res = await fetch(`/api/grades/${this.userId}`, {
+    const res = await fetch(`${API_BASE}/api/grades/${this.userId}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ token: this.token }),
@@ -124,7 +126,7 @@ const API = {
   // Recupere les devoirs
   async getHomework() {
     console.log("[API] getHomework userId:", this.userId);
-    const res = await fetch(`/api/homework/${this.userId}`, {
+    const res = await fetch(`${API_BASE}/api/homework/${this.userId}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ token: this.token }),
@@ -144,7 +146,7 @@ const API = {
 
   async saveSession(userId, token, prenom, nom, accountData) {
     try {
-      await fetch("/api/session/save", {
+      await fetch(API_BASE + "/api/session/save", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ deviceId: this.getDeviceId(), userId, token, prenom, nom, accountData }),
@@ -156,7 +158,7 @@ const API = {
 
   async loadSession() {
     try {
-      const res = await fetch(`/api/session/load/${this.getDeviceId()}`);
+      const res = await fetch(`${API_BASE}/api/session/load/${this.getDeviceId()}`);
       const data = await res.json();
       return data.session || null;
     } catch (err) {
@@ -167,7 +169,7 @@ const API = {
 
   async deleteSession() {
     try {
-      await fetch("/api/session", {
+      await fetch(API_BASE + "/api/session", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ deviceId: this.getDeviceId() }),
@@ -179,7 +181,7 @@ const API = {
 
   async saveGradesCache(data) {
     try {
-      await fetch("/api/cache/grades", {
+      await fetch(API_BASE + "/api/cache/grades", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId: this.userId, data }),
@@ -191,7 +193,7 @@ const API = {
 
   async loadGradesCache() {
     try {
-      const res = await fetch(`/api/cache/grades/${this.userId}`);
+      const res = await fetch(`${API_BASE}/api/cache/grades/${this.userId}`);
       const result = await res.json();
       return result.cached || null;
     } catch (err) {
@@ -202,7 +204,7 @@ const API = {
 
   async saveHomeworkCache(data) {
     try {
-      await fetch("/api/cache/homework", {
+      await fetch(API_BASE + "/api/cache/homework", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId: this.userId, data }),
@@ -214,7 +216,7 @@ const API = {
 
   async loadHomeworkCache() {
     try {
-      const res = await fetch(`/api/cache/homework/${this.userId}`);
+      const res = await fetch(`${API_BASE}/api/cache/homework/${this.userId}`);
       const result = await res.json();
       return result.cached || null;
     } catch (err) {
@@ -225,7 +227,7 @@ const API = {
 
   async saveHomeworkDone(doneStatus) {
     try {
-      await fetch("/api/cache/homework/done", {
+      await fetch(API_BASE + "/api/cache/homework/done", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId: this.userId, doneStatus }),
@@ -237,7 +239,7 @@ const API = {
 
   async saveScheduleCache(weekStart, data) {
     try {
-      await fetch("/api/cache/schedule", {
+      await fetch(API_BASE + "/api/cache/schedule", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId: this.userId, weekStart, data }),
@@ -249,7 +251,7 @@ const API = {
 
   async loadScheduleCache(weekStart) {
     try {
-      const res = await fetch(`/api/cache/schedule/${this.userId}/${weekStart}`);
+      const res = await fetch(`${API_BASE}/api/cache/schedule/${this.userId}/${weekStart}`);
       const result = await res.json();
       return result.cached || null;
     } catch (err) {
@@ -261,7 +263,7 @@ const API = {
   // Recupere la vie scolaire
   async getVieScolaire() {
     console.log("[API] getVieScolaire userId:", this.userId);
-    const res = await fetch(`/api/viescolaire/${this.userId}`, {
+    const res = await fetch(`${API_BASE}/api/viescolaire/${this.userId}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ token: this.token }),
@@ -284,7 +286,7 @@ const API = {
     } catch {}
     // Tenter aussi Supabase (peut echouer si table absente)
     try {
-      await fetch("/api/cache/viescolaire", {
+      await fetch(API_BASE + "/api/cache/viescolaire", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId: this.userId, data }),
@@ -297,7 +299,7 @@ const API = {
   async loadVieScolaireCache() {
     // D'abord Supabase
     try {
-      const res = await fetch(`/api/cache/viescolaire/${this.userId}`);
+      const res = await fetch(`${API_BASE}/api/cache/viescolaire/${this.userId}`);
       const result = await res.json();
       if (result.cached) return result.cached;
     } catch {}
@@ -312,7 +314,7 @@ const API = {
   // Recupere les messages
   async getMessages(type) {
     console.log("[API] getMessages userId:", this.userId, "type:", type);
-    const res = await fetch(`/api/messages/${this.userId}`, {
+    const res = await fetch(`${API_BASE}/api/messages/${this.userId}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ token: this.token, typeRecup498: type || "received" }),
@@ -330,7 +332,7 @@ const API = {
 
   // Lire un message specifique
   async readMessage(msgId, mode) {
-    const res = await fetch(`/api/messages/${this.userId}/read/${msgId}`, {
+    const res = await fetch(`${API_BASE}/api/messages/${this.userId}/read/${msgId}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ token: this.token, mode: mode || "destinataire" }),
@@ -348,7 +350,7 @@ const API = {
 
   // Envoyer un message (repondre)
   async sendMessage(messageData) {
-    const res = await fetch(`/api/messages/${this.userId}/send`, {
+    const res = await fetch(`${API_BASE}/api/messages/${this.userId}/send`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ token: this.token, messageData }),
@@ -367,7 +369,7 @@ const API = {
   // Recupere l'emploi du temps
   async getSchedule(dateDebut, dateFin) {
     console.log("[API] getSchedule userId:", this.userId);
-    const res = await fetch(`/api/schedule/${this.userId}`, {
+    const res = await fetch(`${API_BASE}/api/schedule/${this.userId}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ token: this.token, dateDebut, dateFin }),

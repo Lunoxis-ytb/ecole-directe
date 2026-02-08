@@ -64,6 +64,18 @@ app.use(compression());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// CORS pour l'app native Capacitor
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && (origin.startsWith("capacitor://") || origin.startsWith("http://localhost"))) {
+    res.header("Access-Control-Allow-Origin", origin);
+    res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  }
+  if (req.method === "OPTIONS") return res.sendStatus(200);
+  next();
+});
+
 // ══ PROTECTION PAR MOT DE PASSE (SECURISEE) ══
 const APP_PASSWORD = process.env.APP_PASSWORD;
 
@@ -540,10 +552,10 @@ app.post("/api/viescolaire/:id", async (req, res) => {
 app.post("/api/messages/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const { token, typeRecup498} = req.body;
+    const { token, typeRecup498 } = req.body;
 
     const data = await edFetch(
-      `${API_BASE}/eleves/${id}/messages.awp?verbe=getall&typeRecup498=${typeRecup498|| "received"}&v=${API_VERSION}`,
+      `${API_BASE}/eleves/${id}/messages.awp?verbe=getall&typeRecup498=${typeRecup498 || "received"}&v=${API_VERSION}`,
       { method: "POST", headers: authHeaders(token), body: `data=${JSON.stringify({ anneeMessages: "" })}`, agent }
     );
     if (data._headerToken) { data.token = data._headerToken; delete data._headerToken; }

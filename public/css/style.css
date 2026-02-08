@@ -1234,7 +1234,7 @@ select option {
 .vs-stat-danger::before { background: var(--red); }
 .vs-stat-success::before { background: var(--green); }
 .vs-stat-warning::before { background: var(--orange); }
-.vs-stat-purple::before { background: var(--red); }
+.vs-stat-purple::before { background: #a78bfa; }
 .vs-stat-blue::before { background: var(--accent); }
 
 .vs-stat-number {
@@ -1247,7 +1247,7 @@ select option {
 .vs-stat-danger .vs-stat-number { color: var(--red); }
 .vs-stat-success .vs-stat-number { color: var(--green); }
 .vs-stat-warning .vs-stat-number { color: var(--orange); }
-.vs-stat-purple .vs-stat-number { color: var(--red); }
+.vs-stat-purple .vs-stat-number { color: #a78bfa; }
 .vs-stat-blue .vs-stat-number { color: var(--accent); }
 
 .vs-stat-label {
@@ -1294,7 +1294,7 @@ select option {
 .vs-f-danger.active { background: rgba(248, 113, 113, 0.15); border-color: var(--red); color: var(--red); }
 .vs-f-success.active { background: rgba(52, 211, 153, 0.15); border-color: var(--green); color: var(--green); }
 .vs-f-warning.active { background: rgba(251, 191, 36, 0.15); border-color: var(--orange); color: var(--orange); }
-.vs-f-purple.active { background: rgba(248, 113, 113, 0.15); border-color: var(--red); color: var(--red); }
+.vs-f-purple.active { background: rgba(167, 139, 250, 0.15); border-color: #a78bfa; color: #a78bfa; }
 .vs-f-blue.active { background: rgba(108, 140, 255, 0.15); border-color: var(--accent); color: var(--accent); }
 
 /* ── Jour ── */
@@ -2320,6 +2320,512 @@ select option {
   [data-theme="light"] .settings-menu {
     backdrop-filter: none; -webkit-backdrop-filter: none;
     background: rgba(255, 255, 255, 0.97);
+  }
+}
+
+/* ══ ROLE SWITCH (Admin only) ══ */
+.role-switch {
+  display: inline-flex;
+  background: var(--bg-glass-strong);
+  border: 1px solid var(--border-glass);
+  border-radius: 20px;
+  padding: 2px;
+  gap: 0;
+}
+
+.role-btn {
+  padding: 5px 16px;
+  background: none;
+  border: none;
+  border-radius: 18px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-family: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.role-btn:hover {
+  color: var(--text-primary);
+}
+
+.role-btn.active[data-role="student"] {
+  background: var(--accent);
+  color: #fff;
+}
+
+.role-btn.active[data-role="teacher"] {
+  background: linear-gradient(135deg, #8b5cf6, #a855f7);
+  color: #fff;
+}
+
+/* ══ TEACHER MODE ACCENT ══ */
+.teacher-mode .teacher-stats-bar .stat-card::before {
+  background: linear-gradient(90deg, #8b5cf6, #a855f7, #c084fc);
+}
+
+.teacher-mode .teacher-tabs .tab.active {
+  color: #a855f7;
+  border-bottom-color: #a855f7;
+}
+
+.teacher-mode .teacher-tabs .tab.active::after {
+  background: #a855f7;
+  box-shadow: 0 0 10px rgba(168, 85, 247, 0.4);
+}
+
+/* ══ TEACHER DASHBOARD ══ */
+.teacher-stats-bar {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.teacher-tab-panel { display: none; }
+.teacher-tab-panel.active { display: block; }
+
+/* ── Classes grid ── */
+.t-classes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+}
+
+.t-class-card {
+  background: var(--bg-glass);
+  backdrop-filter: blur(var(--blur));
+  -webkit-backdrop-filter: blur(var(--blur));
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius);
+  padding: 22px;
+  cursor: pointer;
+  transition: var(--transition);
+  position: relative;
+  overflow: hidden;
+}
+
+.t-class-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #8b5cf6, #a855f7);
+  opacity: 0;
+  transition: var(--transition);
+}
+
+.t-class-card:hover {
+  border-color: rgba(168, 85, 247, 0.3);
+  transform: translateY(-2px);
+  box-shadow: 0 0 25px rgba(168, 85, 247, 0.15);
+}
+
+.t-class-card:hover::before {
+  opacity: 1;
+}
+
+.t-class-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.t-class-header h3 {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.t-class-badge {
+  padding: 4px 10px;
+  background: rgba(168, 85, 247, 0.15);
+  border-radius: 12px;
+  font-size: 11px;
+  color: #a855f7;
+  font-weight: 500;
+}
+
+.t-class-stats {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 16px;
+}
+
+.t-class-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.t-class-stat-value {
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.t-class-stat-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Repartition bar */
+.t-class-repartition {
+  margin-top: 4px;
+}
+
+.t-repart-bar {
+  display: flex;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  gap: 2px;
+  margin-bottom: 8px;
+}
+
+.t-repart-segment {
+  border-radius: 3px;
+  min-width: 4px;
+}
+
+.t-repart-good { background: var(--green); }
+.t-repart-mid { background: var(--orange); }
+.t-repart-bad { background: var(--red); }
+
+.t-repart-legend {
+  display: flex;
+  gap: 12px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.t-legend-good { color: var(--green); }
+.t-legend-mid { color: var(--orange); }
+.t-legend-bad { color: var(--red); }
+
+/* ── Back button ── */
+.t-back-btn {
+  padding: 8px 16px;
+  background: var(--bg-glass-strong);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 13px;
+  font-family: inherit;
+  transition: var(--transition);
+  margin-bottom: 16px;
+}
+
+.t-back-btn:hover {
+  border-color: #a855f7;
+  color: #a855f7;
+}
+
+.t-detail-title {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+
+/* ── Eleves table ── */
+.t-eleves-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.t-eleves-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  background: var(--bg-glass);
+  backdrop-filter: blur(var(--blur));
+  -webkit-backdrop-filter: blur(var(--blur));
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.t-eleves-table th,
+.t-eleves-table td {
+  padding: 12px 16px;
+  text-align: left;
+  border-bottom: 1px solid var(--border-glass);
+}
+
+.t-eleves-table th {
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.t-eleves-table tbody tr {
+  transition: var(--transition);
+}
+
+.t-eleves-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.t-eleves-table tbody tr:hover td {
+  background: rgba(168, 85, 247, 0.05);
+}
+
+.t-eleve-nom {
+  font-weight: 600;
+}
+
+/* Note chips */
+.t-notes-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.t-note-chip {
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.t-note-chip.good {
+  background: rgba(52, 211, 153, 0.15);
+  color: var(--green);
+}
+
+.t-note-chip.mid {
+  background: rgba(251, 191, 36, 0.15);
+  color: var(--orange);
+}
+
+.t-note-chip.bad {
+  background: rgba(248, 113, 113, 0.15);
+  color: var(--red);
+}
+
+/* ── Notes selectors ── */
+.t-notes-selectors {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.t-notes-selectors select {
+  padding: 10px 16px;
+  background-color: #141825;
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  cursor: pointer;
+  transition: var(--transition);
+  min-width: 200px;
+}
+
+.t-notes-selectors select:focus {
+  border-color: #a855f7;
+  box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.25);
+}
+
+.t-notes-selectors select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.t-notes-eval-info {
+  padding: 12px 16px;
+  background: rgba(168, 85, 247, 0.1);
+  border: 1px solid rgba(168, 85, 247, 0.2);
+  border-radius: var(--radius-sm);
+  margin-bottom: 16px;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+/* ── Teacher schedule ── */
+.t-schedule .schedule-event {
+  position: relative !important;
+  top: auto !important;
+  left: auto !important;
+  right: auto !important;
+  margin: 2px;
+}
+
+/* ── Devoirs donnes ── */
+.t-devoir-item {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  background: var(--bg-glass);
+  backdrop-filter: blur(var(--blur));
+  -webkit-backdrop-filter: blur(var(--blur));
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius);
+  padding: 18px;
+  margin-bottom: 10px;
+  transition: var(--transition);
+}
+
+.t-devoir-item:hover {
+  border-color: var(--border-glass-strong);
+  background: var(--bg-glass-hover);
+}
+
+.t-devoir-item.t-devoir-passed {
+  opacity: 0.5;
+}
+
+.t-devoir-type {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.t-devoir-ds {
+  background: rgba(248, 113, 113, 0.15);
+  color: var(--red);
+}
+
+.t-devoir-dm {
+  background: rgba(108, 140, 255, 0.15);
+  color: var(--accent);
+}
+
+.t-devoir-interro {
+  background: rgba(251, 191, 36, 0.15);
+  color: var(--orange);
+}
+
+.t-devoir-body {
+  flex: 1;
+}
+
+.t-devoir-titre {
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 6px;
+}
+
+.t-devoir-meta {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  flex-wrap: wrap;
+}
+
+.t-devoir-classe {
+  color: #a855f7;
+  font-weight: 500;
+}
+
+/* ══ TEACHER RESPONSIVE ══ */
+@media (max-width: 900px) {
+  .teacher-stats-bar {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .role-switch {
+    padding: 1px;
+  }
+  .role-btn {
+    padding: 4px 10px;
+    font-size: 11px;
+  }
+  .teacher-stats-bar {
+    display: flex;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+  }
+  .teacher-stats-bar::-webkit-scrollbar { display: none; }
+  .teacher-stats-bar .stat-card {
+    flex: 0 0 auto;
+    width: 135px;
+    scroll-snap-align: start;
+  }
+  .t-classes-grid {
+    grid-template-columns: 1fr;
+  }
+  .t-class-card {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: rgba(20, 25, 40, 0.92);
+  }
+  .t-eleves-table {
+    font-size: 13px;
+    min-width: 400px;
+  }
+  .t-devoir-item {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: rgba(20, 25, 40, 0.92);
+  }
+  .t-notes-selectors select {
+    min-width: 0;
+    flex: 1;
+  }
+}
+
+/* ══ TEACHER LIGHT THEME ══ */
+[data-theme="light"] .role-switch {
+  background: rgba(255, 255, 255, 0.8);
+  border-color: rgba(100, 120, 200, 0.12);
+}
+
+[data-theme="light"] .t-class-card {
+  background: rgba(255, 255, 255, 0.72);
+  border-color: rgba(100, 120, 200, 0.1);
+}
+
+[data-theme="light"] .t-eleves-table {
+  background: rgba(255, 255, 255, 0.75);
+  border-color: rgba(100, 120, 200, 0.1);
+}
+
+[data-theme="light"] .t-eleves-table th {
+  background: rgba(168, 85, 247, 0.04);
+  color: #5a6175;
+}
+
+[data-theme="light"] .t-devoir-item {
+  background: rgba(255, 255, 255, 0.72);
+  border-color: rgba(100, 120, 200, 0.1);
+}
+
+[data-theme="light"] .t-notes-selectors select {
+  background-color: rgba(255, 255, 255, 0.9);
+  border-color: rgba(100, 120, 200, 0.15);
+  color: var(--text-primary);
+}
+
+[data-theme="light"] .t-notes-eval-info {
+  background: rgba(168, 85, 247, 0.08);
+  border-color: rgba(168, 85, 247, 0.15);
+}
+
+[data-theme="light"] .t-back-btn {
+  background: rgba(255, 255, 255, 0.8);
+  border-color: rgba(100, 120, 200, 0.12);
+}
+
+@media (max-width: 600px) {
+  [data-theme="light"] .t-class-card,
+  [data-theme="light"] .t-devoir-item {
+    background: rgba(255, 255, 255, 0.9);
+    backdrop-filter: none; -webkit-backdrop-filter: none;
   }
 }
 

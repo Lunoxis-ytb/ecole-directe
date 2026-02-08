@@ -71,7 +71,11 @@
       <div class="header-left">
         <h1>Dashboard</h1>
         <span id="student-name" class="student-name"></span>
-        <div style="position:relative">
+        <div id="role-switch" class="role-switch" style="display:none">
+          <button class="role-btn active" data-role="student">Eleve</button>
+          <button class="role-btn" data-role="teacher">Prof</button>
+        </div>
+      <div style="position:relative">
           <button id="settings-btn" class="settings-btn" title="Parametres">&#9881;</button>
           <div id="settings-menu" class="settings-menu">
             <button type="button" class="settings-item" id="theme-toggle-item">
@@ -209,6 +213,62 @@
       </section>
 
     </main>
+
+    <!-- ══ TEACHER DASHBOARD (hidden by default) ══ -->
+    <div id="teacher-dashboard" style="display:none">
+
+      <!-- Teacher Stats bar -->
+      <div class="stats-bar teacher-stats-bar">
+        <div class="stat-card t-stat">
+          <span class="stat-label">Mes classes</span>
+          <span class="stat-value" id="tstat-classes">--</span>
+        </div>
+        <div class="stat-card t-stat">
+          <span class="stat-label">Total eleves</span>
+          <span class="stat-value" id="tstat-eleves">--</span>
+        </div>
+        <div class="stat-card t-stat">
+          <span class="stat-label">Moy. des classes</span>
+          <span class="stat-value" id="tstat-moyenne">--</span>
+        </div>
+        <div class="stat-card t-stat">
+          <span class="stat-label">Prochain cours</span>
+          <span class="stat-value" id="tstat-prochain" style="font-size:16px">--</span>
+        </div>
+      </div>
+
+      <!-- Teacher Tabs -->
+      <nav class="tabs teacher-tabs">
+        <button class="tab teacher-tab active" data-ttab="classes"><span class="tab-full">Mes Classes</span><span class="tab-short">Classes</span></button>
+        <button class="tab teacher-tab" data-ttab="notes"><span class="tab-full">Saisie Notes</span><span class="tab-short">Notes</span></button>
+        <button class="tab teacher-tab" data-ttab="schedule"><span class="tab-full">Emploi du temps</span><span class="tab-short">EDT</span></button>
+        <button class="tab teacher-tab" data-ttab="devoirs"><span class="tab-full">Devoirs donnes</span><span class="tab-short">Devoirs</span></button>
+      </nav>
+
+      <!-- Teacher Tab content -->
+      <main class="tab-content">
+        <section id="ttab-classes" class="teacher-tab-panel active">
+          <div class="panel-header"><h2>Mes Classes</h2></div>
+          <div id="teacher-classes-container"></div>
+        </section>
+
+        <section id="ttab-notes" class="teacher-tab-panel">
+          <div class="panel-header"><h2>Saisie des Notes</h2></div>
+          <div id="teacher-notes-container"></div>
+        </section>
+
+        <section id="ttab-schedule" class="teacher-tab-panel">
+          <div class="panel-header"><h2>Emploi du temps</h2></div>
+          <div id="teacher-schedule-container"></div>
+        </section>
+
+        <section id="ttab-devoirs" class="teacher-tab-panel">
+          <div class="panel-header"><h2>Devoirs donnes</h2></div>
+          <div id="teacher-devoirs-container"></div>
+        </section>
+      </main>
+    </div>
+
   </div>
 
   <script src="/js/api.js"></script>
@@ -218,9 +278,10 @@
   <script src="/js/viescolaire.js"></script>
   <script src="/js/messages.js"></script>
   <script src="/js/bulletin.js"></script>
+  <script src="/js/teacher.js"></script>
   <script src="/js/app.js"></script>
   <script>
-    if ("serviceWorker" in navigator) {
+    if ("serviceWorker" in navigator && !window.Capacitor) {
       navigator.serviceWorker.register("/sw.js").then(() => {
         console.log("[PWA] Service Worker enregistre");
       });

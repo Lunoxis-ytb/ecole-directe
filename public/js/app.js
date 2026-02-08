@@ -137,11 +137,79 @@
     }
   }
 
+  // ── Admin role switch ──
+  const ADMIN_USER_ID = "2917";
+  let currentRole = "student";
+
+  let roleSwitchInitialized = false;
+
+  function initRoleSwitch() {
+    const roleSwitch = document.getElementById("role-switch");
+    if (String(API.userId) === ADMIN_USER_ID) {
+      roleSwitch.style.display = "";
+    } else {
+      roleSwitch.style.display = "none";
+      return;
+    }
+
+    if (roleSwitchInitialized) return;
+    roleSwitchInitialized = true;
+
+    const btns = roleSwitch.querySelectorAll(".role-btn");
+    btns.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const role = btn.dataset.role;
+        if (role === currentRole) return;
+        currentRole = role;
+        btns.forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        applyRole(role);
+      });
+    });
+  }
+
+  function applyRole(role) {
+    const studentDashboard = document.querySelector("#dashboard-page > .stats-bar");
+    const studentTabs = document.querySelector("#dashboard-page > .tabs");
+    const studentContent = document.querySelector("#dashboard-page > .tab-content");
+    const teacherDashboard = document.getElementById("teacher-dashboard");
+
+    if (role === "teacher") {
+      if (studentDashboard) studentDashboard.style.display = "none";
+      if (studentTabs) studentTabs.style.display = "none";
+      if (studentContent) studentContent.style.display = "none";
+      if (teacherDashboard) {
+        teacherDashboard.style.display = "block";
+        Teacher.init();
+      }
+      document.body.classList.add("teacher-mode");
+    } else {
+      if (studentDashboard) studentDashboard.style.display = "";
+      if (studentTabs) studentTabs.style.display = "";
+      if (studentContent) studentContent.style.display = "";
+      if (teacherDashboard) teacherDashboard.style.display = "none";
+      document.body.classList.remove("teacher-mode");
+    }
+  }
+
+  function resetRoleSwitch() {
+    currentRole = "student";
+    roleSwitchInitialized = false;
+    const roleSwitch = document.getElementById("role-switch");
+    roleSwitch.style.display = "none";
+    const btns = roleSwitch.querySelectorAll(".role-btn");
+    btns.forEach((b) => b.classList.remove("active"));
+    const studentBtn = roleSwitch.querySelector('[data-role="student"]');
+    if (studentBtn) studentBtn.classList.add("active");
+    document.body.classList.remove("teacher-mode");
+  }
+
   function showDashboard(prenom, nom, offline) {
     hideAllPages();
     dashboardPage.classList.add("active");
     document.getElementById("student-name").textContent =
       `${prenom} ${nom}`;
+    initRoleSwitch();
 
     // Retirer l'ancien bandeau hors-ligne s'il existe
     const oldBanner = document.querySelector(".offline-banner");
@@ -348,6 +416,8 @@
       Grades.chart.destroy();
       Grades.chart = null;
     }
+    resetRoleSwitch();
+    applyRole("student");
     showLogin();
   });
 
