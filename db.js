@@ -43,6 +43,7 @@ module.exports = {
       prenom: data.prenom,
       nom: data.nom,
       account_data: data.account_data,
+      updated_at: data.updated_at,
     };
   },
 

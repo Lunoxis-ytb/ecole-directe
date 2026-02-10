@@ -3,15 +3,16 @@ const Homework = {
   rawData: null,
   doneStatus: {}, // { "hw_done_2025-01-15_Maths": true, ... }
 
-  // Cle pour l'etat fait/pas fait
+  // Cle pour l'etat fait/pas fait (sanitized pour eviter debordement)
   getStorageKey(date, subject) {
-    return `hw_done_${date}_${subject}`;
+    const safeSubject = subject.replace(/[^a-zA-Z0-9\u00C0-\u024F -]/g, "").substring(0, 50);
+    return `hw_done_${date}_${safeSubject}`;
   },
 
   _lastDataHash: null,
   _saveDoneTimer: null,
 
-  _this._decodeB64Utf8(str) {
+  _decodeB64Utf8(str) {
     try {
       const bytes = Uint8Array.from(atob(str), c => c.charCodeAt(0));
       return new TextDecoder("utf-8").decode(bytes);
@@ -60,7 +61,11 @@ const Homework = {
       }
       API.saveHomeworkCache(result.data);
     } else if (!cached) {
-      container.innerHTML = `<p class="loading">Erreur : ${result.message}</p>`;
+      const errP = document.createElement("p");
+      errP.className = "loading";
+      errP.textContent = "Erreur : " + (result.message || "Inconnue");
+      container.innerHTML = "";
+      container.appendChild(errP);
     }
   },
 

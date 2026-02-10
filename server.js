@@ -7,7 +7,29 @@ const crypto = require("crypto");
 const db = require("./db");
 
 // Agent HTTPS avec timeout de 15s
-const agent = new https.Agent({ rejectUnauthorized: false, timeout: 15000 });
+const agent = new https.Agent({ timeout: 15000 });
+
+// ── Chiffrement AES-256-GCM pour credentials server-side ──
+const CRED_KEY = crypto.randomBytes(32);
+const savedCredentials = new Map(); // deviceId → encrypted string
+
+function encryptData(data) {
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv("aes-256-gcm", CRED_KEY, iv);
+  let enc = cipher.update(JSON.stringify(data), "utf8", "hex");
+  enc += cipher.final("hex");
+  const tag = cipher.getAuthTag().toString("hex");
+  return `${iv.toString("hex")}:${tag}:${enc}`;
+}
+
+function decryptData(str) {
+  const [ivHex, tagHex, enc] = str.split(":");
+  const decipher = crypto.createDecipheriv("aes-256-gcm", CRED_KEY, Buffer.from(ivHex, "hex"));
+  decipher.setAuthTag(Buffer.from(tagHex, "hex"));
+  let dec = decipher.update(enc, "hex", "utf8");
+  dec += decipher.final("utf8");
+  return JSON.parse(dec);
+}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -64,9 +86,19 @@ app.use(compression());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// CORS pour l'app native Capacitor
+// CORS pour l'app native Capacitor (origines autorisees uniquement)
+const ALLOWED_ORIGINS = [
+  "https://ecole-directe.onrender.com",
+  "capacitor://localhost",
+  "http://localhost",
+  "http://localhost:3000",
+];
+
 app.use((req, res, next) => {
-  res.header("Access-Control-Allow-Origin", "*");
+  const origin = req.headers.origin;
+  if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    res.header("Access-Control-Allow-Origin", origin);
+  }
   res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
   res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
   if (req.method === "OPTIONS") return res.sendStatus(200);
@@ -79,33 +111,60 @@ const APP_PASSWORD = process.env.APP_PASSWORD;
 // Tokens de session valides (token → timestamp de creation)
 const validAuthTokens = new Map();
 
-// Rate limiting : IP → { attempts, blockedUntil }
+// Rate limiting : cle (IP ou username) → { attempts, blockedUntil }
 const loginAttempts = new Map();
 const MAX_ATTEMPTS = 5;
 const BLOCK_DURATION = 15 * 60 * 1000; // 15 minutes
 
-function checkRateLimit(ip) {
-  const record = loginAttempts.get(ip);
+// Extraire l'IP reelle (dernier hop de confiance, pas le header brut)
+function getClientIp(req) {
+  // En production derriere Render proxy, utiliser le dernier IP du forwarded header
+  const forwarded = req.headers["x-forwarded-for"];
+  if (forwarded) {
+    // Prendre le PREMIER IP (le client original, pas les proxys intermediaires)
+    const first = forwarded.split(",")[0].trim();
+    if (first) return first;
+  }
+  return req.socket.remoteAddress || "unknown";
+}
+
+function checkRateLimit(key) {
+  const record = loginAttempts.get(key);
   if (!record) return true;
   if (record.blockedUntil && Date.now() < record.blockedUntil) return false;
   if (record.blockedUntil && Date.now() >= record.blockedUntil) {
-    loginAttempts.delete(ip);
+    loginAttempts.delete(key);
     return true;
   }
   return record.attempts < MAX_ATTEMPTS;
 }
 
-function recordFailedAttempt(ip) {
-  const record = loginAttempts.get(ip) || { attempts: 0 };
+function recordFailedAttempt(key) {
+  const record = loginAttempts.get(key) || { attempts: 0 };
   record.attempts++;
   if (record.attempts >= MAX_ATTEMPTS) {
     record.blockedUntil = Date.now() + BLOCK_DURATION;
   }
-  loginAttempts.set(ip, record);
+  loginAttempts.set(key, record);
 }
 
-function clearAttempts(ip) {
-  loginAttempts.delete(ip);
+function clearAttempts(key) {
+  loginAttempts.delete(key);
+}
+
+// Verifier rate limit par IP ET par username
+function checkLoginRateLimit(ip, username) {
+  return checkRateLimit("ip:" + ip) && (!username || checkRateLimit("user:" + username));
+}
+
+function recordLoginFail(ip, username) {
+  recordFailedAttempt("ip:" + ip);
+  if (username) recordFailedAttempt("user:" + username);
+}
+
+function clearLoginAttempts(ip, username) {
+  clearAttempts("ip:" + ip);
+  if (username) clearAttempts("user:" + username);
 }
 
 // Nettoyer les tokens expires toutes les heures (max age 30 jours)
@@ -156,15 +215,14 @@ if(location.search.includes('blocked'))document.getElementById('blocked').style.
 
 // Endpoint d'authentification
 app.post("/auth", (req, res) => {
-  const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
+  const ip = getClientIp(req);
 
-  if (!checkRateLimit(ip)) {
+  if (!checkRateLimit("ip:" + ip)) {
     return res.redirect("/gate?blocked=1");
   }
 
   if (req.body.password === APP_PASSWORD) {
-    clearAttempts(ip);
-    // Generer un token aleatoire au lieu de stocker le mot de passe
+    clearAttempts("ip:" + ip);
     const sessionToken = crypto.randomBytes(32).toString("hex");
     validAuthTokens.set(sessionToken, Date.now());
     res.cookie("app_auth", sessionToken, {
@@ -174,7 +232,7 @@ app.post("/auth", (req, res) => {
     });
     res.redirect("/");
   } else {
-    recordFailedAttempt(ip);
+    recordFailedAttempt("ip:" + ip);
     res.redirect("/gate?wrong=1");
   }
 });
@@ -188,9 +246,12 @@ if (APP_PASSWORD) {
   app.use((req, res, next) => {
     if (req.path === "/auth" || req.path === "/gate") return next();
 
-    // Laisser passer les requetes de l'app native Capacitor
+    // Laisser passer les endpoints d'auth ED (securises par EcoleDirecte eux-memes)
+    if (req.path === "/api/login" || req.path === "/api/doubleauth" || req.path === "/api/ping" || req.path === "/api/warmgtk") return next();
+
+    // Laisser passer les requetes de l'app native Capacitor uniquement
     const origin = req.headers.origin || "";
-    if (origin && origin !== "https://ecole-directe.onrender.com") return next();
+    if (origin === "capacitor://localhost") return next();
 
     // Laisser passer les fichiers statiques (CSS, JS, images, manifest, SW)
     const ext = path.extname(req.path);
@@ -213,8 +274,18 @@ if (APP_PASSWORD) {
   });
 }
 
-// Ping endpoint (reveille le serveur Render)
-app.get("/api/ping", (req, res) => res.json({ ok: true }));
+// Ping endpoint (reveille le serveur Render + pre-warm GTK)
+app.get("/api/ping", (req, res) => {
+  // Pre-warm GTK cache en arriere-plan
+  getCachedGtkCookies().catch(() => {});
+  res.json({ ok: true });
+});
+
+// Pre-warm GTK en avance (appele quand l'utilisateur focus le champ login)
+app.get("/api/warmgtk", (req, res) => {
+  getCachedGtkCookies().catch(() => {});
+  res.json({ ok: true });
+});
 
 // Log toutes les requetes API
 app.use("/api", (req, res, next) => {
@@ -225,7 +296,7 @@ app.use("/api", (req, res, next) => {
 app.use(express.static(path.join(__dirname, "public")));
 
 // Stockage temporaire des sessions en attente de double auth
-// Cle = token, Valeur = { cookies, identifiant, motdepasse }
+// Cle = identifiant (unique par user, pas de race condition)
 const pendingAuth = new Map();
 
 // ── Utilitaire : extraire les cookies d'une reponse fetch ──
@@ -246,8 +317,11 @@ function extractHeaderToken(fetchResponse) {
   return fetchResponse.headers.get("x-token") || "";
 }
 
-// ── Etape 1 commune : obtenir GTK cookies ──
-async function getGtkCookies() {
+// ── Cache GTK cookies (TTL 5min) ──
+let gtkCache = null; // { cookies, gtkValue, timestamp }
+const GTK_TTL = 300000; // 5 minutes (GTK cookies durent plus longtemps)
+
+async function fetchFreshGtkCookies() {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10000);
   const gtkRes = await fetch(
@@ -264,14 +338,31 @@ async function getGtkCookies() {
   const gtkCookie = cookies.find((c) => c.startsWith("GTK="));
   const gtkValue = gtkCookie ? gtkCookie.split("=").slice(1).join("=") : "";
   console.log("[GTK] Cookies recus:", cookies.length, "GTK:", gtkCookie ? "oui" : "non");
+  gtkCache = { cookies, gtkValue, timestamp: Date.now() };
   return { cookies, gtkValue };
+}
+
+async function getCachedGtkCookies() {
+  if (gtkCache && (Date.now() - gtkCache.timestamp) < GTK_TTL) {
+    console.log("[GTK] Utilisation du cache (age:", Math.round((Date.now() - gtkCache.timestamp) / 1000), "s)");
+    return { cookies: gtkCache.cookies, gtkValue: gtkCache.gtkValue };
+  }
+  return fetchFreshGtkCookies();
+}
+
+// ── Etape 1 commune : obtenir GTK cookies ──
+async function getGtkCookies() {
+  return fetchFreshGtkCookies();
 }
 
 // ── POST /api/login — authentification ──
 // Fonction login interne (avec retry integre car GTK doit etre renouvele a chaque tentative)
 async function doLogin(identifiant, motdepasse, fa, maxRetries = 2) {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    const { cookies, gtkValue } = await getGtkCookies();
+    // 1er essai : GTK cache, retry : GTK frais
+    const { cookies, gtkValue } = attempt === 1
+      ? await getCachedGtkCookies()
+      : await getGtkCookies();
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 15000);
     let response;
@@ -324,10 +415,65 @@ async function doLogin(identifiant, motdepasse, fa, maxRetries = 2) {
   }
 }
 
+// ── Helper : gerer le cas 250 (double auth) ──
+async function handleNeedDoubleAuth(token, allCookies, identifiant, motdepasse) {
+  console.log("[LOGIN] Double auth requise...");
+
+  // Stocker session par identifiant (pas de race condition entre users)
+  pendingAuth.set(identifiant, {
+    token,
+    cookies: allCookies,
+    identifiant,
+    motdepasse,
+  });
+
+  // Recuperer la question QCM
+  const daData = await edFetch(
+    `${API_BASE}/connexion/doubleauth.awp?verbe=get&v=${API_VERSION}`,
+    {
+      method: "POST",
+      headers: {
+        ...BROWSER_HEADERS,
+        "Content-Type": "application/x-www-form-urlencoded",
+        "X-Token": token,
+        Cookie: allCookies.join("; "),
+      },
+      body: "data={}",
+      agent,
+    }
+  );
+
+  const newToken = daData._headerToken || daData.token || token;
+  console.log("[DA-GET] Code:", daData.code, "Token:", newToken ? newToken.substring(0, 15) + "..." : "vide");
+
+  // Mettre a jour le token dans pendingAuth
+  if (newToken !== token) {
+    const session = pendingAuth.get(identifiant);
+    if (session) session.token = newToken;
+  }
+
+  return {
+    code: 250,
+    token: newToken,
+    identifiant,
+    message: "Double authentification requise",
+    doubleAuth: daData.data || daData,
+  };
+}
+
 app.post("/api/login", async (req, res) => {
   try {
-    const { identifiant, motdepasse, fa } = req.body;
+    const { identifiant, motdepasse, deviceId } = req.body;
     console.log("[LOGIN] Envoi authentification...");
+
+    // Charger le fa depuis les credentials sauvegardes (si existants)
+    let fa = [];
+    if (deviceId && savedCredentials.has(deviceId)) {
+      try {
+        const stored = decryptData(savedCredentials.get(deviceId));
+        if (stored.fa) fa = stored.fa;
+      } catch {}
+    }
 
     const result = await doLogin(identifiant, motdepasse, fa);
     const { data, token, allCookies } = result;
@@ -336,49 +482,25 @@ app.post("/api/login", async (req, res) => {
 
     // Code 250 = double authentification requise (QCM)
     if (data.code === 250 && token) {
-      console.log("[LOGIN] Double auth requise...");
-
-      // Stocker session pour les etapes suivantes
-      pendingAuth.set(token, {
-        cookies: allCookies,
-        identifiant,
-        motdepasse,
-      });
-
-      // Recuperer la question QCM
-      const daData = await edFetch(
-        `${API_BASE}/connexion/doubleauth.awp?verbe=get&v=${API_VERSION}`,
-        {
-          method: "POST",
-          headers: {
-            ...BROWSER_HEADERS,
-            "Content-Type": "application/x-www-form-urlencoded",
-            "X-Token": token,
-            Cookie: allCookies.join("; "),
-          },
-          body: "data={}",
-          agent,
-        }
-      );
-
-      const newToken = daData._headerToken || daData.token || token;
-      console.log("[DA-GET] Code:", daData.code, "Token:", newToken ? newToken.substring(0, 15) + "..." : "vide");
-      console.log("[DA-GET] Data:", JSON.stringify(daData.data, null, 2).substring(0, 500));
-
-      // Mettre a jour le token dans pendingAuth si necessaire
-      if (newToken !== token) {
-        const session = pendingAuth.get(token);
-        pendingAuth.delete(token);
-        pendingAuth.set(newToken, session);
+      // fa expire → le supprimer des credentials sauvegardes
+      if (deviceId && savedCredentials.has(deviceId)) {
+        try {
+          const stored = decryptData(savedCredentials.get(deviceId));
+          stored.fa = null;
+          savedCredentials.set(deviceId, encryptData(stored));
+        } catch {}
       }
 
-      res.json({
-        code: 250,
-        token: newToken,
-        message: "Double authentification requise",
-        doubleAuth: daData.data || daData,
-      });
+      const response = await handleNeedDoubleAuth(token, allCookies, identifiant, motdepasse);
+      res.json(response);
       return;
+    }
+
+    // Succes (200) → sauvegarder credentials chiffres cote serveur
+    if (data.code === 200 && deviceId) {
+      const newFa = data._fa || fa;
+      savedCredentials.set(deviceId, encryptData({ identifiant, motdepasse, fa: newFa }));
+      console.log("[LOGIN] Credentials sauvegardes pour device:", deviceId);
     }
 
     res.json(data);
@@ -391,26 +513,17 @@ app.post("/api/login", async (req, res) => {
 // ── POST /api/doubleauth — soumettre la reponse QCM ──
 app.post("/api/doubleauth", async (req, res) => {
   try {
-    const { token, choix } = req.body;
+    const { choix, identifiant, deviceId } = req.body;
 
-    // Chercher la session avec le token exact OU en fallback le dernier token enregistre
-    let session = pendingAuth.get(token);
-    let actualToken = token;
-    if (!session) {
-      // Fallback : chercher le token le plus recent dans pendingAuth
-      const keys = [...pendingAuth.keys()];
-      if (keys.length > 0) {
-        actualToken = keys[keys.length - 1];
-        session = pendingAuth.get(actualToken);
-        console.log("[DA-POST] Token fallback:", actualToken.substring(0, 15));
-      }
-    }
+    // Chercher la session par identifiant (plus de race condition)
+    const session = pendingAuth.get(identifiant);
 
     if (!session) {
-      console.log("[DA-POST] Aucune session trouvee. PendingAuth vide.");
+      console.log("[DA-POST] Aucune session trouvee pour:", identifiant);
       return res.status(400).json({ code: 505, message: "Session expiree, reconnectez-vous" });
     }
 
+    const actualToken = session.token;
     console.log("[DA-POST] Envoi choix:", choix, "Token:", actualToken.substring(0, 15) + "...");
 
     // Soumettre la reponse au QCM
@@ -430,7 +543,6 @@ app.post("/api/doubleauth", async (req, res) => {
     );
 
     console.log("[DA-POST] Code:", daData.code, "Message:", daData.message || "");
-    console.log("[DA-POST] Full data:", JSON.stringify(daData.data, null, 2));
 
     // Si succes (code 200), re-login avec cn/cv
     if (daData.code === 200) {
@@ -442,7 +554,20 @@ app.post("/api/doubleauth", async (req, res) => {
         const fa = [{ cn, cv }];
         const loginResult = await doLogin(session.identifiant, session.motdepasse, fa);
         console.log("[DA-POST] Re-login code:", loginResult.data.code);
-        pendingAuth.delete(actualToken);
+        pendingAuth.delete(identifiant);
+
+        if (loginResult.data.code === 200) {
+          loginResult.data._fa = fa;
+          // Sauvegarder credentials + fa cote serveur
+          if (deviceId) {
+            savedCredentials.set(deviceId, encryptData({
+              identifiant: session.identifiant,
+              motdepasse: session.motdepasse,
+              fa,
+            }));
+            console.log("[DA-POST] Credentials + fa sauvegardes pour device:", deviceId);
+          }
+        }
         res.json(loginResult.data);
         return;
       }
@@ -451,18 +576,91 @@ app.post("/api/doubleauth", async (req, res) => {
       console.log("[DA-POST] Code 200 mais pas de cn/cv, tentative re-login direct...");
       const loginResult = await doLogin(session.identifiant, session.motdepasse, []);
       console.log("[DA-POST] Re-login direct code:", loginResult.data.code);
-      pendingAuth.delete(actualToken);
+      pendingAuth.delete(identifiant);
+      if (loginResult.data.code === 200 && deviceId) {
+        savedCredentials.set(deviceId, encryptData({
+          identifiant: session.identifiant,
+          motdepasse: session.motdepasse,
+          fa: null,
+        }));
+      }
       res.json(loginResult.data);
       return;
     }
 
     // Echec de la verification (mauvaise reponse, etc.)
-    pendingAuth.delete(actualToken);
+    pendingAuth.delete(identifiant);
     res.json(daData);
   } catch (err) {
     console.error("[DA-POST] Erreur:", err.message);
     res.status(500).json({ code: 500, message: "Erreur serveur: " + err.message });
   }
+});
+
+// ── POST /api/autologin — re-login avec credentials sauvegardes ──
+app.post("/api/autologin", async (req, res) => {
+  try {
+    const { deviceId } = req.body;
+    if (!deviceId) return res.json({ success: false, message: "deviceId requis" });
+
+    const encrypted = savedCredentials.get(deviceId);
+    if (!encrypted) return res.json({ success: false, message: "Pas de credentials sauvegardes" });
+
+    let creds;
+    try {
+      creds = decryptData(encrypted);
+    } catch {
+      savedCredentials.delete(deviceId);
+      return res.json({ success: false, message: "Credentials corrompus" });
+    }
+
+    console.log("[AUTOLOGIN] Tentative pour device:", deviceId);
+    const result = await doLogin(creds.identifiant, creds.motdepasse, creds.fa || []);
+    const { data, token, allCookies } = result;
+
+    if (data.code === 200) {
+      // Mettre a jour le fa si nouveau
+      if (data._fa) {
+        savedCredentials.set(deviceId, encryptData({
+          identifiant: creds.identifiant,
+          motdepasse: creds.motdepasse,
+          fa: data._fa,
+        }));
+      }
+      console.log("[AUTOLOGIN] Succes");
+      return res.json(data);
+    }
+
+    if (data.code === 250 && token) {
+      // fa expire → clear le fa stocke
+      savedCredentials.set(deviceId, encryptData({
+        identifiant: creds.identifiant,
+        motdepasse: creds.motdepasse,
+        fa: null,
+      }));
+
+      const response = await handleNeedDoubleAuth(token, allCookies, creds.identifiant, creds.motdepasse);
+      return res.json(response);
+    }
+
+    // Echec (mauvais identifiants, etc.)
+    savedCredentials.delete(deviceId);
+    console.log("[AUTOLOGIN] Echec, credentials supprimes");
+    return res.json({ success: false, code: data.code, message: data.message || "Echec connexion" });
+  } catch (err) {
+    console.error("[AUTOLOGIN] Erreur:", err.message);
+    res.json({ success: false, message: err.message });
+  }
+});
+
+// ── DELETE /api/credentials — supprimer credentials sauvegardes ──
+app.delete("/api/credentials", (req, res) => {
+  const { deviceId } = req.body || {};
+  if (deviceId) {
+    savedCredentials.delete(deviceId);
+    console.log("[CREDS] Supprimes pour device:", deviceId);
+  }
+  res.json({ success: true });
 });
 
 // Headers communs pour les requetes authentifiees
@@ -760,4 +958,20 @@ app.get("/api/cache/viescolaire/:userId", async (req, res) => {
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Dashboard EcoleDirecte demarre sur http://localhost:${PORT}`);
   console.log(`Aussi accessible sur le reseau local via http://192.168.1.97:${PORT}`);
+  // Pre-warm GTK cache au demarrage
+  fetchFreshGtkCookies()
+    .then(() => console.log("[GTK] Cache pre-chauffe au demarrage"))
+    .catch((err) => console.log("[GTK] Pre-warm echec (non bloquant):", err.message));
+
+  // ── Self-ping keep-alive (empeche Render de s'endormir) ──
+  if (process.env.RENDER_EXTERNAL_URL || process.env.RENDER) {
+    const KEEP_ALIVE_INTERVAL = 14 * 60 * 1000; // 14 minutes
+    const selfUrl = process.env.RENDER_EXTERNAL_URL || `https://ecole-directe.onrender.com`;
+    setInterval(() => {
+      fetch(`${selfUrl}/api/ping`)
+        .then(() => console.log("[KEEP-ALIVE] Ping OK"))
+        .catch((err) => console.log("[KEEP-ALIVE] Ping echec:", err.message));
+    }, KEEP_ALIVE_INTERVAL);
+    console.log("[KEEP-ALIVE] Self-ping active toutes les 14 min");
+  }
 });

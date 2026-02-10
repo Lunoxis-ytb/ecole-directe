@@ -3,6 +3,8 @@ const Messages = {
   rawData: null,
   currentView: "inbox", // "inbox" ou "sent"
   currentMessage: null,
+  _refreshInterval: null,
+  _visibilityHandler: null,
 
   async load() {
     const container = document.getElementById("messages-container");
@@ -26,9 +28,14 @@ const Messages = {
     if (result.success) {
       this.rawData = result.data;
       this.renderList();
+      this.updateUnreadBadge();
       try { localStorage.setItem(cacheKey, JSON.stringify(result.data)); } catch {}
     } else if (!this.rawData) {
-      container.innerHTML = `<p class="loading">Erreur : ${result.message}</p>`;
+      const errP = document.createElement("p");
+      errP.className = "loading";
+      errP.textContent = "Erreur : " + (result.message || "Inconnue");
+      container.innerHTML = "";
+      container.appendChild(errP);
     }
   },
 
@@ -159,7 +166,11 @@ const Messages = {
     const result = await API.readMessage(msgId, mode);
 
     if (!result.success) {
-      container.innerHTML = `<p class="loading">Erreur : ${result.message}</p>`;
+      const errP = document.createElement("p");
+      errP.className = "loading";
+      errP.textContent = "Erreur : " + (result.message || "Inconnue");
+      container.innerHTML = "";
+      container.appendChild(errP);
       return;
     }
 
@@ -187,10 +198,8 @@ const Messages = {
       }
     }
 
-    // Nettoyer le HTML basique
-    const cleanContent = content
-      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
-      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "");
+    // Sanitizer HTML : supprimer elements dangereux + event handlers
+    const cleanContent = this._sanitizeHtml(content);
 
     const fragment = document.createDocumentFragment();
 
@@ -279,6 +288,26 @@ const Messages = {
     container.appendChild(fragment);
   },
 
+  // Sanitize HTML : supprime scripts, iframes, event handlers, javascript: URLs
+  _sanitizeHtml(html) {
+    const div = document.createElement("div");
+    div.innerHTML = html;
+    // Supprimer elements dangereux
+    div.querySelectorAll("script, style, iframe, object, embed, form, link, meta, base, svg").forEach(el => el.remove());
+    // Supprimer event handlers et URLs javascript:
+    div.querySelectorAll("*").forEach(el => {
+      for (const attr of [...el.attributes]) {
+        const name = attr.name.toLowerCase();
+        if (name.startsWith("on") ||
+            ((name === "href" || name === "src" || name === "action") &&
+             attr.value.trim().toLowerCase().startsWith("javascript:"))) {
+          el.removeAttribute(attr.name);
+        }
+      }
+    });
+    return div.innerHTML;
+  },
+
   // Hash name to deterministic color
   _getColorForName(name) {
     const colors = [
@@ -315,6 +344,71 @@ const Messages = {
     } else {
       // Older: show date
       return msgDate.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+    }
+  },
+
+  // ── Auto-refresh (polling toutes les 2 min) ──
+  startAutoRefresh() {
+    this.stopAutoRefresh();
+    this._refreshInterval = setInterval(() => this._silentRefresh(), 120000);
+    // Listener visibilitychange : refresh au retour sur l'onglet navigateur
+    this._visibilityHandler = () => {
+      if (!document.hidden) this._silentRefresh();
+    };
+    document.addEventListener("visibilitychange", this._visibilityHandler);
+  },
+
+  stopAutoRefresh() {
+    if (this._refreshInterval) {
+      clearInterval(this._refreshInterval);
+      this._refreshInterval = null;
+    }
+    if (this._visibilityHandler) {
+      document.removeEventListener("visibilitychange", this._visibilityHandler);
+      this._visibilityHandler = null;
+    }
+  },
+
+  async _silentRefresh() {
+    if (!API.token || !API.userId) return;
+    try {
+      const type = this.currentView === "sent" ? "sent" : "received";
+      const result = await API.getMessages(type);
+      if (result.success) {
+        this.rawData = result.data;
+        const cacheKey = `edmm_msg_cache_${API.userId}_${type}`;
+        try { localStorage.setItem(cacheKey, JSON.stringify(result.data)); } catch {}
+        // Re-render seulement si on est sur l'onglet messages ET sur la liste (pas un message ouvert)
+        const msgPanel = document.getElementById("tab-messages");
+        if (msgPanel && msgPanel.classList.contains("active") && !this.currentMessage) {
+          this.renderList();
+        }
+        this.updateUnreadBadge();
+      }
+    } catch (err) {
+      console.warn("[MESSAGES] Silent refresh erreur:", err.message);
+    }
+  },
+
+  // ── Badge non-lu ──
+  updateUnreadBadge() {
+    const badge = document.getElementById("msg-unread-badge");
+    if (!badge) return;
+    const data = this.rawData;
+    if (!data || !data.messages) {
+      badge.style.display = "none";
+      return;
+    }
+    const messages = data.messages.received || [];
+    const unread = messages.filter(m => !m.read).length;
+    if (unread > 0) {
+      badge.textContent = unread > 99 ? "99+" : unread;
+      badge.style.display = "";
+      badge.classList.remove("badge-pop");
+      void badge.offsetWidth; // force reflow pour re-trigger animation
+      badge.classList.add("badge-pop");
+    } else {
+      badge.style.display = "none";
     }
   },
 

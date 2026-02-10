@@ -15,7 +15,7 @@
   const daChoixInput = document.getElementById("da-choix");
   const daBtn = document.getElementById("da-btn");
   const daError = document.getElementById("da-error");
-  let pendingDAToken = null;
+  let pendingDAIdentifiant = null;
 
   // ── Utilitaire Base64 (avec support UTF-8 pour les accents) ──
   function decodeB64(str) {
@@ -51,6 +51,13 @@
     // Sinon essayer SQLite (persistant entre fermetures navigateur)
     const dbSession = await API.loadSession();
     if (dbSession) {
+      // Verifier si le token n'est pas trop vieux (ED expire apres ~2h)
+      const MAX_TOKEN_AGE = 2 * 60 * 60 * 1000; // 2 heures
+      const updatedAt = dbSession.updated_at ? new Date(dbSession.updated_at).getTime() : 0;
+      if (Date.now() - updatedAt > MAX_TOKEN_AGE) {
+        console.log("[SESSION] Token trop vieux, auto-login necessaire");
+        return null; // Forcer auto-login ou login frais
+      }
       // Restaurer en sessionStorage pour les acces suivants
       sessionStorage.setItem("ed_token", dbSession.token);
       sessionStorage.setItem("ed_userId", dbSession.user_id);
@@ -248,7 +255,7 @@
         if (target === "viescolaire" && !VieScolaire.rawData) {
           VieScolaire.load();
         }
-        if (target === "messages" && !Messages.rawData) {
+        if (target === "messages") {
           Messages.load();
         }
         if (target === "bulletin") {
@@ -313,6 +320,8 @@
     Schedule.load();
     Homework.load();
     VieScolaire.load();
+    // Demarrer le polling des messages (toutes les 2 min)
+    Messages.startAutoRefresh();
   }
 
   // ── Toggle mot de passe ──
@@ -339,6 +348,13 @@
     const motdepasse = document.getElementById("password").value;
 
     try {
+      // Attendre que le serveur soit pret
+      const wakeTimer = setTimeout(showWakeIndicator, 2000);
+      await serverReady;
+      clearTimeout(wakeTimer);
+      hideWakeIndicator();
+      loginBtn.textContent = "Connexion...";
+
       const result = await API.login(identifiant, motdepasse);
       console.log("[LOGIN] Resultat:", result);
 
@@ -347,7 +363,7 @@
         showDashboard(result.prenom, result.nom);
         loadDashboard();
       } else if (result.needDoubleAuth) {
-        pendingDAToken = result.token;
+        pendingDAIdentifiant = result.identifiant;
         showDoubleAuth(result.doubleAuth);
       } else if (await tryOfflineMode(result.message)) {
         // Mode hors-ligne active
@@ -381,7 +397,7 @@
         return;
       }
 
-      const result = await API.submitDoubleAuth(pendingDAToken, choix);
+      const result = await API.submitDoubleAuth(pendingDAIdentifiant, choix);
       console.log("[DA] Resultat:", result);
 
       if (result.success) {
@@ -402,7 +418,9 @@
 
   // ── Logout ──
   logoutBtn.addEventListener("click", () => {
+    Messages.stopAutoRefresh();
     clearSession();
+    API.clearCredentials();
     API.token = null;
     API.userId = null;
     Grades.rawData = null;
@@ -512,11 +530,73 @@
   });
 
   // ── Init ──
-  // Reveiller le serveur Render immediatement (cold start ~15s)
-  fetch(API_BASE + "/api/ping").catch(() => {});
+  // Pre-reveil du serveur Render (promesse globale)
+  let serverWokeUp = false;
+  const serverReady = new Promise((resolve) => {
+    const start = Date.now();
+    fetch(API_BASE + "/api/ping")
+      .then(() => { serverWokeUp = true; console.log("[PING] Serveur pret en", Date.now() - start, "ms"); resolve(); })
+      .catch(() => { serverWokeUp = true; console.log("[PING] Echec ping"); resolve(); }); // resolve quand meme pour ne pas bloquer
+  });
+
+  // Pre-warm GTK quand l'utilisateur interagit avec le formulaire de login
+  let gtkWarmed = false;
+  function warmGtk() {
+    if (gtkWarmed) return;
+    gtkWarmed = true;
+    fetch(API_BASE + "/api/warmgtk").catch(() => {});
+    console.log("[GTK] Pre-warm declenche (user focus)");
+  }
+  document.getElementById("username").addEventListener("focus", warmGtk);
+  document.getElementById("password").addEventListener("focus", warmGtk);
+
+  // Callback si token expire et re-login impossible → retour au login
+  API._tokenExpiredCallback = () => {
+    console.log("[APP] Token expire, retour au login");
+    clearSession();
+    API.token = null;
+    API.userId = null;
+    showLogin();
+  };
+
+  // Nettoyer les anciennes cles localStorage (migration securite)
+  API._cleanupLegacy();
 
   initTabs();
   initTrimesterSelect();
+
+  // Indicateur "Reveil du serveur..."
+  let wakeIndicatorTimer = null;
+  function showWakeIndicator() {
+    let overlay = document.getElementById("wake-overlay");
+    if (!overlay) {
+      overlay = document.createElement("div");
+      overlay.id = "wake-overlay";
+      overlay.innerHTML = `
+        <div class="wake-box">
+          <div class="wake-spinner"></div>
+          <p class="wake-title">Reveil du serveur...</p>
+          <p class="wake-sub">Premiere connexion du jour, patientez quelques secondes</p>
+        </div>
+      `;
+      document.body.appendChild(overlay);
+    }
+    overlay.classList.add("visible");
+    wakeIndicatorTimer = true;
+  }
+  function hideWakeIndicator() {
+    if (wakeIndicatorTimer) {
+      const overlay = document.getElementById("wake-overlay");
+      if (overlay) overlay.classList.remove("visible");
+      wakeIndicatorTimer = null;
+    }
+  }
+
+  // Montrer l'indicateur de reveil si le serveur met du temps a repondre au ping
+  const earlyWakeTimer = setTimeout(() => {
+    if (!serverWokeUp) showWakeIndicator();
+  }, 1500);
+  serverReady.then(() => { clearTimeout(earlyWakeTimer); hideWakeIndicator(); });
 
   // Chargement session async (sessionStorage + fallback SQLite)
   const session = await loadSession();
@@ -525,6 +605,74 @@
     API.userId = session.userId;
     showDashboard(session.prenom, session.nom);
     loadDashboard();
+  } else if (API.hasCredentials()) {
+    // Pas de session mais credentials sauvegardes → auto-login
+    // Verifier si on a des donnees cachees en sessionStorage pour affichage instantane
+    const cachedUserId = sessionStorage.getItem("ed_userId");
+    const cachedPrenom = sessionStorage.getItem("ed_prenom");
+    const cachedNom = sessionStorage.getItem("ed_nom");
+
+    if (cachedUserId && cachedPrenom) {
+      // Dashboard instantane avec donnees cachees pendant l'auto-login en background
+      API.userId = cachedUserId;
+      showDashboard(cachedPrenom, cachedNom || "");
+      loadDashboard();
+
+      // Auto-login en arriere-plan (pas de await serverReady, /api/autologin reveille le serveur)
+      try {
+        const result = await API.autoLogin();
+        if (result.success) {
+          saveSession(result.token, API.userId, result.prenom, result.nom, result.account);
+          // Mettre a jour le nom si different
+          if (result.prenom !== cachedPrenom || result.nom !== cachedNom) {
+            document.getElementById("student-name").textContent = `${result.prenom} ${result.nom}`;
+          }
+        } else if (result.needDoubleAuth) {
+          pendingDAIdentifiant = result.identifiant;
+          showDoubleAuth(result.doubleAuth);
+        } else {
+          // Echec → retour au login
+          API.clearCredentials();
+          API.token = null;
+          API.userId = null;
+          showLogin();
+        }
+      } catch (err) {
+        console.error("[AUTO-LOGIN] Erreur (background):", err);
+        // Rester sur le dashboard cache, l'utilisateur peut toujours naviguer
+      }
+    } else {
+      // Pas de donnees cachees → flow classique avec page de login
+      showLogin();
+      loginError.textContent = "Reconnexion automatique...";
+      loginError.style.color = "#9aa0b0";
+      loginBtn.disabled = true;
+
+      try {
+        const result = await API.autoLogin();
+        if (result.success) {
+          saveSession(result.token, API.userId, result.prenom, result.nom, result.account);
+          showDashboard(result.prenom, result.nom);
+          loadDashboard();
+        } else if (result.needDoubleAuth) {
+          loginError.textContent = "";
+          loginError.style.color = "";
+          loginBtn.disabled = false;
+          pendingDAIdentifiant = result.identifiant;
+          showDoubleAuth(result.doubleAuth);
+        } else {
+          API.clearCredentials();
+          loginError.textContent = "";
+          loginError.style.color = "";
+          loginBtn.disabled = false;
+        }
+      } catch (err) {
+        console.error("[AUTO-LOGIN] Erreur:", err);
+        loginError.textContent = "";
+        loginError.style.color = "";
+        loginBtn.disabled = false;
+      }
+    }
   } else {
     showLogin();
   }

@@ -41,7 +41,11 @@ const VieScolaire = {
       }
       API.saveVieScolaireCache(result.data);
     } else if (!cached) {
-      container.innerHTML = `<p class="loading">Erreur : ${result.message}</p>`;
+      const errP = document.createElement("p");
+      errP.className = "loading";
+      errP.textContent = "Erreur : " + (result.message || "Inconnue");
+      container.innerHTML = "";
+      container.appendChild(errP);
     }
   },
 

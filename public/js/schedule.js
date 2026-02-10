@@ -85,7 +85,11 @@ const Schedule = {
       currentEvents = result.data;
       API.saveScheduleCache(dateDebut, result.data);
     } else if (!cached) {
-      container.innerHTML = `<p class="loading">Erreur : ${result.message}</p>`;
+      const errP = document.createElement("p");
+      errP.className = "loading";
+      errP.textContent = "Erreur : " + (result.message || "Inconnue");
+      container.innerHTML = "";
+      container.appendChild(errP);
     }
 
     // Chercher le prochain cours en arriere-plan
@@ -233,10 +237,12 @@ const Schedule = {
       }
 
       // D'abord essayer le cache pour chaque semaine
-      const cacheResults = await Promise.all(
+      const cacheResults = await Promise.allSettled(
         weekDates.map(ws => API.loadScheduleCache(ws))
       );
-      for (const cached of cacheResults) {
+      for (const r of cacheResults) {
+        if (r.status !== "fulfilled") continue;
+        const cached = r.value;
         if (cached && cached.data && cached.data.length > 0) {
           findNext(cached.data);
           if (nextClass) break;
@@ -250,8 +256,10 @@ const Schedule = {
           weekEnd.setDate(weekEnd.getDate() + 7 * (i + 1) + 4);
           return API.getSchedule(ws, this.formatDate(weekEnd));
         });
-        const results = await Promise.all(futures);
-        for (const result of results) {
+        const results = await Promise.allSettled(futures);
+        for (const r of results) {
+          if (r.status !== "fulfilled") continue;
+          const result = r.value;
           if (result.success && result.data && result.data.length > 0) {
             findNext(result.data);
             if (nextClass) break;

@@ -15,9 +15,98 @@ const API = {
     return id;
   },
 
+  // ── Nettoyage anciennes cles (migration securite) ──
+  _cleanupLegacy() {
+    localStorage.removeItem("edmm_creds");
+    localStorage.removeItem("edmm_fa");
+  },
+
+  // ── Credentials server-side (plus de stockage client) ──
+  _setHasCredentials(has) {
+    if (has) localStorage.setItem("edmm_has_creds", "1");
+    else localStorage.removeItem("edmm_has_creds");
+  },
+  hasCredentials() {
+    return localStorage.getItem("edmm_has_creds") === "1";
+  },
+  async clearCredentials() {
+    this._setHasCredentials(false);
+    try {
+      await fetch(API_BASE + "/api/credentials", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deviceId: this.getDeviceId() }),
+      });
+    } catch {}
+  },
+
+  // ── Re-login automatique si token expire (code 520) ──
+  _tokenExpiredCallback: null, // set by app.js
+
+  async _handleTokenExpired() {
+    console.log("[API] Token expire (520), tentative re-login...");
+    if (!this.hasCredentials()) {
+      if (this._tokenExpiredCallback) this._tokenExpiredCallback();
+      return false;
+    }
+    try {
+      const result = await this.autoLogin();
+      if (result.success) {
+        console.log("[API] Re-login auto reussi");
+        return true;
+      }
+    } catch (err) {
+      console.error("[API] Re-login auto echoue:", err);
+    }
+    if (this._tokenExpiredCallback) this._tokenExpiredCallback();
+    return false;
+  },
+
+  // Wrapper pour les appels API authentifies — re-login auto si 520
+  async _authFetch(url, body) {
+    let data;
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...body, token: this.token }),
+      });
+      data = await res.json();
+    } catch (err) {
+      return { code: 0, message: "Erreur reseau : " + err.message };
+    }
+
+    if (data.code === 520) {
+      const relogged = await this._handleTokenExpired();
+      if (relogged) {
+        try {
+          const res2 = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ...body, token: this.token }),
+          });
+          return await res2.json();
+        } catch (err) {
+          return { code: 0, message: "Erreur reseau au retry : " + err.message };
+        }
+      }
+      return data;
+    }
+
+    if (data.code === 200 && data.token) this.token = data.token;
+    return data;
+  },
+
   // Extraire les infos du compte (parent ou eleve)
   _processLoginSuccess(data) {
     this.token = data.token;
+
+    // Validation reponse API
+    if (!data.data || !data.data.accounts || data.data.accounts.length === 0) {
+      console.error("[API] Reponse login invalide: pas de comptes");
+      return { success: false, message: "Reponse serveur invalide" };
+    }
+
     const account = data.data.accounts[0];
 
     // Compte parent (typeCompte "1") → utiliser l'ID de l'eleve
@@ -53,16 +142,19 @@ const API = {
 
   // Authentification
   async login(identifiant, motdepasse) {
+    const body = { identifiant, motdepasse, deviceId: this.getDeviceId() };
+
     const res = await fetch(API_BASE + "/api/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ identifiant, motdepasse }),
+      body: JSON.stringify(body),
     });
 
     const data = await res.json();
     console.log("[API] Login response code:", data.code);
 
     if (data.code === 200 && data.token) {
+      this._setHasCredentials(true);
       return this._processLoginSuccess(data);
     }
 
@@ -72,6 +164,7 @@ const API = {
         success: false,
         needDoubleAuth: true,
         token: data.token,
+        identifiant: data.identifiant,
         doubleAuth: data.doubleAuth,
         message: data.message,
       };
@@ -79,22 +172,23 @@ const API = {
 
     return {
       success: false,
-      message: data.message || "Identifiants incorrects",
+      message: data.message || data.error || "Identifiants incorrects",
     };
   },
 
   // Valider la double authentification (envoi du choix QCM)
-  async submitDoubleAuth(token, choix) {
+  async submitDoubleAuth(identifiant, choix) {
     const res = await fetch(API_BASE + "/api/doubleauth", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token, choix }),
+      body: JSON.stringify({ identifiant, choix, deviceId: this.getDeviceId() }),
     });
 
     const data = await res.json();
     console.log("[API] DoubleAuth response code:", data.code);
 
     if (data.code === 200 && data.token) {
+      this._setHasCredentials(true);
       return this._processLoginSuccess(data);
     }
 
@@ -104,41 +198,52 @@ const API = {
     };
   },
 
-  // Recupere les notes
-  async getGrades() {
-    console.log("[API] getGrades userId:", this.userId);
-    const res = await fetch(`${API_BASE}/api/grades/${this.userId}`, {
+  // Auto-login avec credentials sauvegardes cote serveur
+  async autoLogin() {
+    const res = await fetch(API_BASE + "/api/autologin", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: this.token }),
+      body: JSON.stringify({ deviceId: this.getDeviceId() }),
     });
 
     const data = await res.json();
+    console.log("[API] AutoLogin response:", data.code || data.success);
 
-    if (data.code === 200) {
-      if (data.token) this.token = data.token;
-      return { success: true, data: data.data };
+    if (data.code === 200 && data.token) {
+      return this._processLoginSuccess(data);
     }
 
+    if (data.code === 250 && data.token) {
+      return {
+        success: false,
+        needDoubleAuth: true,
+        token: data.token,
+        identifiant: data.identifiant,
+        doubleAuth: data.doubleAuth,
+        message: data.message,
+      };
+    }
+
+    this._setHasCredentials(false);
+    return {
+      success: false,
+      message: data.message || "Auto-login impossible",
+    };
+  },
+
+  // Recupere les notes
+  async getGrades() {
+    console.log("[API] getGrades userId:", this.userId);
+    const data = await this._authFetch(`${API_BASE}/api/grades/${this.userId}`, {});
+    if (data.code === 200) return { success: true, data: data.data };
     return { success: false, message: data.message };
   },
 
   // Recupere les devoirs
   async getHomework() {
     console.log("[API] getHomework userId:", this.userId);
-    const res = await fetch(`${API_BASE}/api/homework/${this.userId}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: this.token }),
-    });
-
-    const data = await res.json();
-
-    if (data.code === 200) {
-      if (data.token) this.token = data.token;
-      return { success: true, data: data.data };
-    }
-
+    const data = await this._authFetch(`${API_BASE}/api/homework/${this.userId}`, {});
+    if (data.code === 200) return { success: true, data: data.data };
     return { success: false, message: data.message };
   },
 
@@ -263,19 +368,8 @@ const API = {
   // Recupere la vie scolaire
   async getVieScolaire() {
     console.log("[API] getVieScolaire userId:", this.userId);
-    const res = await fetch(`${API_BASE}/api/viescolaire/${this.userId}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: this.token }),
-    });
-
-    const data = await res.json();
-
-    if (data.code === 200) {
-      if (data.token) this.token = data.token;
-      return { success: true, data: data.data };
-    }
-
+    const data = await this._authFetch(`${API_BASE}/api/viescolaire/${this.userId}`, {});
+    if (data.code === 200) return { success: true, data: data.data };
     return { success: false, message: data.message };
   },
 
@@ -314,73 +408,30 @@ const API = {
   // Recupere les messages
   async getMessages(type) {
     console.log("[API] getMessages userId:", this.userId, "type:", type);
-    const res = await fetch(`${API_BASE}/api/messages/${this.userId}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: this.token, typeRecup498: type || "received" }),
-    });
-
-    const data = await res.json();
-
-    if (data.code === 200) {
-      if (data.token) this.token = data.token;
-      return { success: true, data: data.data };
-    }
-
+    const data = await this._authFetch(`${API_BASE}/api/messages/${this.userId}`, { typeRecup498: type || "received" });
+    if (data.code === 200) return { success: true, data: data.data };
     return { success: false, message: data.message };
   },
 
   // Lire un message specifique
   async readMessage(msgId, mode) {
-    const res = await fetch(`${API_BASE}/api/messages/${this.userId}/read/${msgId}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: this.token, mode: mode || "destinataire" }),
-    });
-
-    const data = await res.json();
-
-    if (data.code === 200) {
-      if (data.token) this.token = data.token;
-      return { success: true, data: data.data };
-    }
-
+    const data = await this._authFetch(`${API_BASE}/api/messages/${this.userId}/read/${msgId}`, { mode: mode || "destinataire" });
+    if (data.code === 200) return { success: true, data: data.data };
     return { success: false, message: data.message };
   },
 
   // Envoyer un message (repondre)
   async sendMessage(messageData) {
-    const res = await fetch(`${API_BASE}/api/messages/${this.userId}/send`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: this.token, messageData }),
-    });
-
-    const data = await res.json();
-
-    if (data.code === 200) {
-      if (data.token) this.token = data.token;
-      return { success: true, data: data.data };
-    }
-
+    const data = await this._authFetch(`${API_BASE}/api/messages/${this.userId}/send`, { messageData });
+    if (data.code === 200) return { success: true, data: data.data };
     return { success: false, message: data.message };
   },
 
   // Recupere l'emploi du temps
   async getSchedule(dateDebut, dateFin) {
     console.log("[API] getSchedule userId:", this.userId);
-    const res = await fetch(`${API_BASE}/api/schedule/${this.userId}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: this.token, dateDebut, dateFin }),
-    });
-
-    const data = await res.json();
-
-    if (data.code === 200) {
-      if (data.token) this.token = data.token;
-      return { success: true, data: data.data };
-    }
+    const data = await this._authFetch(`${API_BASE}/api/schedule/${this.userId}`, { dateDebut, dateFin });
+    if (data.code === 200) return { success: true, data: data.data };
 
     return { success: false, message: data.message };
   },
